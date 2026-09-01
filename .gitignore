@@ -1,0 +1,42 @@
+# ── Python ─────────────────────────────────────────────────────────────────────
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# ── Environment ─────────────────────────────────────────────────────────────────
+.env
+*.env.local
+
+# ── Testing / CI ────────────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ── Reports / Temp ──────────────────────────────────────────────────────────────
+reports/*.png
+reports/*.json
+reports/*.csv
+
+# ── Dataset (never commit raw audio/CSV) ────────────────────────────────────────
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# ── OS artifacts ────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── IDE ─────────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+
+# ── Installers ──────────────────────────────────────────────────────────────────
+*.exe
+*.msi

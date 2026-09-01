@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  vigilvoice:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vigilvoice-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEBUG=false
+      - LOG_LEVEL=info
+      - MAX_UPLOAD_MB=50
+      - INFERENCE_TIMEOUT=15.0
+      - MAX_CONCURRENT_INFERENCES=10
+      - DEMO_MODE=false
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
