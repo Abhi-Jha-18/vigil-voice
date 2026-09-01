@@ -76,7 +76,7 @@ def train_model(args):
         "manifest_path": str(args.manifest),
         "preprocessing_config": default_config.to_dict(),
         "model_architecture": "SimpleCNNDetector",
-        "dataset_identifier": "REAL_DATASET_REQUIRED"
+        "dataset_identifier": "unknown"
     }
 
     # 4. Load Datasets
@@ -99,9 +99,17 @@ def train_model(args):
 
     num_real = sum(1 for r in train_dataset.records if r.label == 1)
     num_fake = sum(1 for r in train_dataset.records if r.label == 0)
+    
+    if num_real == 0 or num_fake == 0:
+        print("\nINSUFFICIENT REAL DATASET\nTraining aborted.")
+        sys.exit(1)
+        
     total_samples = num_real + num_fake
     real_weight = total_samples / (2.0 * max(1, num_real))
     fake_weight = total_samples / (2.0 * max(1, num_fake))
+
+    dataset_sources = list({r.dataset_source for r in train_dataset.records if r.dataset_source})
+    metadata["dataset_identifier"] = dataset_sources[0] if dataset_sources else "GenericDataset"
 
     print(f"Train samples: {len(train_dataset)} (REAL: {num_real}, FAKE: {num_fake}) | Val samples: {len(val_dataset)}")
     print(f"Class Weights - REAL: {real_weight:.2f}, FAKE: {fake_weight:.2f}")
@@ -172,6 +180,12 @@ def train_model(args):
             torch.save(model.state_dict(), best_model_path)
             metadata["best_epoch"] = epoch + 1
             metadata["best_metrics"] = metrics
+            import hashlib
+            sha = hashlib.sha256()
+            with open(best_model_path, "rb") as f:
+                for chunk in iter(lambda: f.read(65536), b""):
+                    sha.update(chunk)
+            metadata["model_sha256"] = sha.hexdigest()
             with open(best_model_path.with_name("vigilvoice_cnn_metadata.json"), "w") as f:
                 json.dump(metadata, f, indent=2)
         else:

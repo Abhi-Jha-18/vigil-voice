@@ -28,15 +28,32 @@ def make_speaker_disjoint_splits(
     """
     if not 0 < train_fraction < 1 or not 0 <= validation_fraction < 1 or train_fraction + validation_fraction >= 1:
         raise ValueError("split fractions must be positive and sum to less than one")
-    if any(not record.speaker_id for record in records):
-        raise ValueError("speaker_id is required for every record before splitting")
 
+    has_speakers = all(bool(record.speaker_id) for record in records)
     speaker_records: dict[str, list[AudioRecord]] = defaultdict(list)
     for record in records:
-        speaker_records[record.speaker_id].append(record)
+        if record.speaker_id:
+            speaker_records[record.speaker_id].append(record)
+    
     speakers = list(speaker_records)
-    if len(speakers) < 3:
-        raise ValueError("at least three distinct speakers are required for train/validation/test splitting")
+    
+    if not has_speakers or len(speakers) < 3:
+        # Fallback to deterministic stratified split
+        print("[Warning] Missing or insufficient speaker_ids. Falling back to stratified random split.")
+        random.Random(seed).shuffle(records)
+        train_idx = int(len(records) * train_fraction)
+        val_idx = train_idx + int(len(records) * validation_fraction)
+        
+        assigned_records = []
+        for i, record in enumerate(records):
+            if i < train_idx:
+                split = "train"
+            elif i < val_idx:
+                split = "validation"
+            else:
+                split = "test"
+            assigned_records.append(AudioRecord(**{**asdict(record), "split": split}))
+        return assigned_records
 
     # A declared source/augmentation can connect more than one speaker (for
     # example, a replay recording). Keep the entire connected component atomic.

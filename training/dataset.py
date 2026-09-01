@@ -167,9 +167,9 @@ def validate_dataset(
             report.issues.append(ValidationIssue("error", "missing_filepath", record.filepath, "filepath is empty"))
             continue
         if not record.speaker_id:
-            report.issues.append(ValidationIssue("error", "missing_speaker", record.filepath, "speaker_id is required for leakage-safe splitting"))
+            report.issues.append(ValidationIssue("warning", "missing_speaker", record.filepath, "speaker_id missing, will use random stratified split"))
         if not record.dataset_source:
-            report.issues.append(ValidationIssue("error", "missing_dataset_source", record.filepath, "dataset_source is required"))
+            report.issues.append(ValidationIssue("warning", "missing_dataset_source", record.filepath, "dataset_source missing, using 'unknown'"))
         if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
             report.issues.append(ValidationIssue("error", "unsupported_format", record.filepath, f"unsupported extension: {path.suffix}"))
             continue

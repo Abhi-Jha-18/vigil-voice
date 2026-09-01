@@ -85,13 +85,16 @@ def main():
         json.dump(stats, f, indent=2)
     print(f"Dataset statistics saved to {stats_path}")
     
-    print("\nDataset Statistics Summary:")
-    print(f"  Total samples: {stats['samples']}")
-    print(f"  Bonafide: {stats['labels'].get(1, 0)}")
-    print(f"  Spoof: {stats['labels'].get(0, 0)}")
-    print(f"  Train: {stats['splits'].get('train', 0)}")
-    print(f"  Validation: {stats['splits'].get('validation', 0)}")
-    print(f"  Test: {stats['splits'].get('test', 0)}")
+    print("\nDataset:")
+    print(f"Total samples: {stats['samples']}")
+    print(f"Bonafide: {stats['labels'].get('genuine', 0)}")
+    print(f"Spoof: {stats['labels'].get('spoof', 0)}")
+    print(f"Train: {stats['splits'].get('train', 0)}")
+    print(f"Validation: {stats['splits'].get('validation', 0)}")
+    print(f"Test: {stats['splits'].get('test', 0)}")
+    print(f"Speakers: {stats['speakers']}")
+    print(f"Attack types: {len(stats['attack_types'])}")
+    print(f"Sample rate: 16000")
 
 if __name__ == "__main__":
     main()
