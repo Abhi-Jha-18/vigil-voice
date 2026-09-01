@@ -39,5 +39,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 EXPOSE 8000
 
-# Run uvicorn server in production mode
-CMD ["python", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run uvicorn server — PORT is injected by Render/Railway/Fly at runtime
+SHELL ["/bin/sh", "-c"]
+CMD python -m uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000}

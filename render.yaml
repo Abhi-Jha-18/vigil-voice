@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: vigil-voice
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free            # Change to "starter" for persistent storage
+    region: oregon        # Choose: oregon, frankfurt, singapore, ohio, virginia
+    healthCheckPath: /api/health
+
+    # Environment variables — set secrets in Render Dashboard, not here
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      - key: DEMO_MODE
+        value: "true"
+      - key: MAX_UPLOAD_MB
+        value: "50"
+      - key: MAX_AUDIO_DURATION_SECONDS
+        value: "120"
+      - key: SAMPLE_RATE
+        value: "16000"
+      - key: SEGMENT_DURATION_SECONDS
+        value: "4"
+      - key: SEGMENT_OVERLAP_SECONDS
+        value: "1"
+      - key: MODEL_PATH
+        value: "models/cnn_weight.pth"
+      - key: MODEL_VERSION
+        value: "v1.0-production"
+      # CORS_ORIGINS will be set automatically to your Render URL in the Dashboard
