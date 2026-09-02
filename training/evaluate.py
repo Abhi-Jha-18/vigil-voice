@@ -42,7 +42,13 @@ def evaluate_model(args):
     # 1. Load Dataset (strictly TEST split)
     print(f"Loading test split from {args.manifest}...")
     try:
-        test_dataset = AntiSpoofDataset(args.manifest, split="test", root_dir=Path(project_root))
+        test_dataset = AntiSpoofDataset(
+            args.manifest,
+            split="test",
+            root_dir=Path(project_root),
+            allow_synthetic=args.allow_synthetic,
+            cache_features=True,
+        )
     except Exception as e:
         print(f"\n[ERROR] Dataset initialization failed: {e}")
         print("REAL DATASET REQUIRED — EVALUATION NOT YET EXECUTED.")
@@ -89,9 +95,9 @@ def evaluate_model(args):
     eer, eer_threshold = calculate_eer(all_labels, all_preds)
     
     report = {
-        "dataset": "ASVspoof_or_similar",
-        "dataset_type": "REAL",
-        "model_status": "REAL_MODEL",
+        "dataset": "synthetic_local" if args.allow_synthetic else "ASVspoof_or_similar",
+        "dataset_type": "SYNTHETIC" if args.allow_synthetic else "REAL",
+        "model_status": "DEMO_MODEL" if args.allow_synthetic else "REAL_MODEL",
         "split": "test",
         "samples": len(test_dataset),
         "accuracy": metrics['accuracy'],
@@ -213,6 +219,11 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=Path, help="Output JSON report path")
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--device", type=str, default="cuda")
-    
+    parser.add_argument(
+        "--allow-synthetic",
+        action="store_true",
+        help="Allow evaluation on DEMO/synthetic fixtures.",
+    )
+
     args = parser.parse_args()
     evaluate_model(args)

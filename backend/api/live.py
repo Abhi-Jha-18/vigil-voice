@@ -23,12 +23,13 @@ from fastapi.responses import JSONResponse
 
 from backend.config import PROJECT_ROOT, settings
 from backend.audio.processor import normalize_audio
-from backend.audio.features import extract_acoustic_features
+from backend.audio.features import extract_mfcc_for_model
 from backend.detection.detector import (
     SimpleCNNDetector,
     get_model_status,
     is_cnn_model_available,
     _load_cnn_model,
+    heuristic_score_from_mfcc,
 )
 
 logger = logging.getLogger("vigilvoice.live")
@@ -220,32 +221,21 @@ def process_live_window(session: LiveSession, window_audio: np.ndarray) -> dict:
             "incident_created": session.incident is not None
         }
 
-    # 2. Preprocess and Extract Features
+    # 2. Preprocess and Extract Features (MFCC-only — live path must stay < hop interval)
     y_norm = normalize_audio(window_audio)
-    features = extract_acoustic_features(y_norm, sr=sr)
-    mfcc_seq = features.get("mfcc_sequence", [])
-    
-    # 3. Model Inference (Guarded)
+    mfcc = extract_mfcc_for_model(y_norm, sr=sr)
+
+    # 3. Model Inference (Guarded). The CNN emits logits; convert with sigmoid.
     model, status = _load_cnn_model()
     if status in ("REAL_MODEL", "DEMO_MODEL") and model is not None:
-        mfcc = np.array(mfcc_seq, dtype=np.float32)
-        if mfcc.shape[1] < 64:
-            mfcc = np.pad(mfcc, ((0, 0), (0, 64 - mfcc.shape[1])), mode="constant")
-        else:
-            mfcc = mfcc[:, :64]
-        inp_tensor = torch.tensor(mfcc, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
-        with torch.no_grad():
-            real_prob = float(model(inp_tensor).squeeze().cpu().numpy())
+        inp_tensor = torch.from_numpy(np.ascontiguousarray(mfcc, dtype=np.float32)).unsqueeze(0).unsqueeze(0)
+        with torch.inference_mode():
+            logit = model(inp_tensor).reshape(-1)[0]
+            cnn_prob = float(torch.sigmoid(logit).cpu())
+        heur_prob = heuristic_score_from_mfcc(mfcc)
+        real_prob = float(np.clip(0.75 * cnn_prob + 0.25 * heur_prob, 0.01, 0.99))
     else:
-        # Fallback to acoustic heuristic if real model is absent
-        centroid = features.get("spectral_centroid_mean", 0.0)
-        mfcc_std = features.get("mfcc_std", [])
-        avg_std = float(np.mean(mfcc_std)) if mfcc_std else 10.0
-        # Heuristic scoring
-        if avg_std < 5.0 and centroid > 3000:
-            real_prob = 0.25  # suspicious
-        else:
-            real_prob = 0.85
+        real_prob = heuristic_score_from_mfcc(mfcc)
 
     fake_prob = float(1.0 - real_prob)
     risk_score = float(np.clip(fake_prob * 100.0, 0.0, 100.0))

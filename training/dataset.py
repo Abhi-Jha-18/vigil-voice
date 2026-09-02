@@ -226,41 +226,53 @@ class AntiSpoofDataset(Dataset):
     Uses canonical preprocessing to match inference exactly.
     NEVER silently falls back to synthetic tensors.
     """
-    def __init__(self, manifest_path: str | Path, split: str = None, root_dir: str | Path = None):
+    def __init__(
+        self,
+        manifest_path: str | Path,
+        split: str = None,
+        root_dir: str | Path = None,
+        allow_synthetic: bool = False,
+        cache_features: bool = True,
+        augment: bool = False,
+    ):
         self.root_dir = Path(root_dir) if root_dir else Path(manifest_path).parent
+        self.augment = bool(augment and (split or "").lower() == "train")
         try:
             all_records = load_metadata(manifest_path)
         except Exception as e:
             raise RuntimeError(f"Failed to load dataset manifest: {e}")
-            
+
         if split:
             self.records = [r for r in all_records if r.split.lower() == split.lower()]
         else:
             self.records = all_records
-            
+
         if not self.records:
             raise ValueError(f"No records found for split '{split}'.")
-            
+
         # Reject if these are the demo tone generation files (fail-safe)
         demo_count = sum(1 for r in self.records if "DEMO_DATA" in r.dataset_source.upper())
-        if demo_count == len(self.records) and demo_count > 0:
+        if demo_count == len(self.records) and demo_count > 0 and not allow_synthetic:
             raise ValueError("REAL DATASET REQUIRED. Manifest contains only synthetic DEMO fixtures. "
                              "Please supply a legitimate speech anti-spoofing dataset.")
+
+        self._cache: list[tuple[torch.Tensor, torch.Tensor, dict]] | None = None
+        if cache_features:
+            self._cache = [self._load_item(i) for i in range(len(self.records))]
 
     def __len__(self) -> int:
         return len(self.records)
 
-    def __getitem__(self, idx: int):
+    def _load_item(self, idx: int):
         record = self.records[idx]
         filepath = resolve_audio_path(record, self.root_dir)
-        
+
         if not filepath.exists():
             raise FileNotFoundError(f"Missing audio file: {filepath}")
 
         # Lazy imports — avoids pulling matplotlib into validation-only code paths
+        from backend.audio.features import extract_mfcc_for_model
         from training.preprocessing import preprocess_for_training
-        from backend.audio.features import extract_acoustic_features
-        from backend.audio.config import default_config
 
         # Use canonical preprocessing (to ensure training == inference)
         try:
@@ -269,30 +281,31 @@ class AntiSpoofDataset(Dataset):
             # Re-raise explicit error instead of faking data
             raise RuntimeError(f"Preprocessing failed for {filepath}: {e}")
 
-        # Extract features
-        features = extract_acoustic_features(audio_array, sr=default_config.sample_rate)
-        
-        # MFCC baseline: Shape (13, 64) -> (1, 13, 64)
-        mfcc_seq = features.get("mfcc_sequence")
-        if mfcc_seq is None:
+        mfcc = extract_mfcc_for_model(audio_array)
+        if mfcc is None or mfcc.shape != (13, 64):
             raise ValueError(f"Feature extraction failed for {filepath}")
-        
-        mfcc = np.array(mfcc_seq, dtype=np.float32)
-            
-        # Ensure exact dimensions
-        if mfcc.shape[1] < 64:
-            pad_width = 64 - mfcc.shape[1]
-            mfcc = np.pad(mfcc, ((0, 0), (0, pad_width)), mode='constant')
-        else:
-            mfcc = mfcc[:, :64]
-            
-        tensor = torch.tensor(mfcc, dtype=torch.float32).unsqueeze(0)
+
+        tensor = torch.from_numpy(np.ascontiguousarray(mfcc, dtype=np.float32)).unsqueeze(0)
         label = torch.tensor(record.label, dtype=torch.float32)
-        
+
         metadata = {
             "speaker_id": record.speaker_id,
             "attack_type": record.attack_type,
             "filepath": str(filepath)
         }
-        
+        return tensor, label, metadata
+
+    def __getitem__(self, idx: int):
+        if self._cache is not None:
+            tensor, label, metadata = self._cache[idx]
+            tensor = tensor.clone()
+        else:
+            tensor, label, metadata = self._load_item(idx)
+
+        if self.augment:
+            shift = int(torch.randint(-6, 7, (1,)).item())
+            if shift:
+                tensor = torch.roll(tensor, shifts=shift, dims=-1)
+            tensor = tensor + torch.randn_like(tensor) * 0.35
+
         return tensor, label, metadata

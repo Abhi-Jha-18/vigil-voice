@@ -27,7 +27,12 @@ from backend.utils.audio_utils import save_temp_file, remove_temp_file, sanitize
 from backend.audio.processor import validate_format
 from backend.audio.vad import remove_silence
 from backend.audio.features import extract_acoustic_features, get_mel_spectrogram_b64
-from backend.detection.detector import run_ai_detection, is_cnn_model_available, get_model_status
+from backend.detection.detector import (
+    run_ai_detection,
+    is_cnn_model_available,
+    get_model_status,
+    warmup_cnn_model,
+)
 from backend.detection.decision import make_decision
 from backend.config import PROJECT_ROOT, settings
 from backend.api.stream import router as stream_router
@@ -66,6 +71,16 @@ app.include_router(live_router)
 app.include_router(incidents_router)
 
 VALID_PHASES = {"phase1", "phase2", "phase3", "phase4"}
+
+
+@app.on_event("startup")
+async def _warmup_model():
+    """Load CNN weights and run a dummy pass so the first detect call is fast."""
+    try:
+        status = warmup_cnn_model()
+        logger.info(f"Detection engine ready (model_status={status})")
+    except Exception as exc:
+        logger.warning(f"Model warmup skipped: {exc}")
 VALID_DEMO_VERDICTS = {"real", "fake", "uncertain"}
 
 

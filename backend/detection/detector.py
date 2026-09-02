@@ -32,24 +32,27 @@ class SimpleCNNDetector(nn.Module):
     """
     Phase 2: CNN Model Architecture for MFCC spectrogram analysis.
     Input shape: (batch, 1, N_MFCC, N_TIME_STEPS)  →  e.g. (B, 1, 13, 64)
+
+    Frequency pooling uses kernel (1, 2) so the 13 MFCC bins are not crushed
+    before AdaptiveAvgPool — higher cepstra carry spoof-discriminative cues.
     """
     def __init__(self):
         super(SimpleCNNDetector, self).__init__()
         self.conv = nn.Sequential(
             nn.Conv2d(1, 16, kernel_size=3, padding=1),
             nn.BatchNorm2d(16),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=(1, 2)),
             nn.Conv2d(16, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=(1, 2)),
             nn.AdaptiveAvgPool2d((8, 8))
         )
         self.fc = nn.Sequential(
             nn.Linear(32 * 8 * 8, 64),
-            nn.ReLU(),
-            nn.Dropout(0.5),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.35),
             nn.Linear(64, 1)
         )
 
@@ -113,7 +116,7 @@ def _get_checkpoint_status(model_file: Path) -> str:
         try:
             with open(metadata_file, "r") as f:
                 metadata = json.load(f)
-                
+
                 # Check for recorded checksum to verify integrity
                 recorded_hash = metadata.get("model_sha256") or metadata.get("expected_sha256")
                 if recorded_hash:
@@ -136,6 +139,7 @@ def _get_checkpoint_status(model_file: Path) -> str:
         return "DEMO_MODEL"
     # Legacy unversioned checkpoints are considered demo
     return "DEMO_MODEL"
+
 
 def _load_cnn_model() -> tuple:
     """
@@ -186,6 +190,7 @@ def is_cnn_model_available() -> bool:
     _, status = _load_cnn_model()
     return status in ("REAL_MODEL", "DEMO_MODEL")
 
+
 def get_model_status() -> str:
     """Returns the precise model capability status."""
     _, status = _load_cnn_model()
@@ -196,7 +201,113 @@ def get_model_status() -> str:
     return status
 
 
+def warmup_cnn_model() -> str:
+    """Load weights and run a dummy forward pass so the first user request is fast."""
+    model, status = _load_cnn_model()
+    if model is not None:
+        dummy = torch.zeros(1, 1, N_MFCC, N_TIME_STEPS)
+        with torch.inference_mode():
+            model(dummy)
+    return status
+
+
+# ── Feature helpers ────────────────────────────────────────────────────────────
+
+def _as_mfcc_array(features: dict) -> np.ndarray:
+    seq = features.get("mfcc_sequence", [])
+    mfcc = np.asarray(seq, dtype=np.float32)
+    if mfcc.ndim != 2:
+        return np.zeros((N_MFCC, N_TIME_STEPS), dtype=np.float32)
+    if mfcc.shape[0] != N_MFCC:
+        return np.zeros((N_MFCC, N_TIME_STEPS), dtype=np.float32)
+    if mfcc.shape[1] < N_TIME_STEPS:
+        mfcc = np.pad(mfcc, ((0, 0), (0, N_TIME_STEPS - mfcc.shape[1])), mode="constant")
+    else:
+        mfcc = mfcc[:, :N_TIME_STEPS]
+    return mfcc
+
+
+def _mfcc_to_tensor(mfcc: np.ndarray) -> torch.Tensor:
+    return torch.from_numpy(np.ascontiguousarray(mfcc, dtype=np.float32)[np.newaxis, np.newaxis, :, :])
+
+
+def _cnn_real_probability(model: nn.Module, mfcc_batch: np.ndarray) -> np.ndarray:
+    """
+    mfcc_batch: (B, N_MFCC, N_TIME_STEPS)
+    Returns P(REAL) in [0.01, 0.99] as a 1-D numpy array.
+    """
+    tensor = torch.from_numpy(np.ascontiguousarray(mfcc_batch, dtype=np.float32)).unsqueeze(1)
+    with torch.inference_mode():
+        logits = model(tensor).reshape(-1)
+        probs = torch.sigmoid(logits).cpu().numpy()
+    return np.clip(probs.astype(np.float64), 0.01, 0.99)
+
+
 # ── Phase 1: Heuristic Detector ────────────────────────────────────────────────
+
+def _heuristic_score_from_arrays(
+    mfcc_stds,
+    sc_mean: float,
+    zcr_mean: float = 0.05,
+    mfcc_sequence=None,
+    flatness: float = 0.1,
+    delta_std: float = None,
+) -> float:
+    """
+    Acoustic anti-spoof heuristic using cues that transfer to real recordings:
+    natural speech has higher cepstral / temporal variance; vocoders are too
+    stable, too clean, or show unnatural spectral centroids.
+    """
+    score = 0.50
+
+    if mfcc_stds is not None and len(mfcc_stds) > 0:
+        std_variance = float(np.mean(mfcc_stds))
+        if std_variance > 18:
+            score += 0.22
+        elif std_variance > 12:
+            score += 0.10
+        elif std_variance < 6:
+            score -= 0.28
+        elif std_variance < 9:
+            score -= 0.14
+
+    if sc_mean > 2800:
+        score -= 0.16
+    elif sc_mean > 2400:
+        score -= 0.08
+    elif sc_mean < 900:
+        score -= 0.10
+    elif 1100 <= sc_mean <= 2200:
+        score += 0.08
+
+    if zcr_mean < 0.02:
+        score -= 0.08
+    elif zcr_mean > 0.18:
+        score -= 0.06
+
+    if flatness is not None:
+        if flatness < 0.02:
+            score -= 0.08  # overly peaky / buzzy vocoder
+        elif flatness > 0.35:
+            score -= 0.05
+
+    seq = None
+    if mfcc_sequence is not None:
+        seq = np.asarray(mfcc_sequence, dtype=np.float32)
+        if seq.ndim == 2 and seq.shape[1] > 2:
+            if delta_std is None:
+                delta_std = float(np.mean(np.std(np.diff(seq, axis=1), axis=1)))
+
+    if delta_std is not None:
+        if delta_std < 1.5:
+            score -= 0.20  # temporally frozen → synthetic
+        elif delta_std < 3.0:
+            score -= 0.08
+        elif delta_std > 8.0:
+            score += 0.12
+
+    return float(np.clip(score, 0.05, 0.95))
+
 
 def run_phase1_stub_detection(features: dict, force_verdict: str = None) -> float:
     """
@@ -214,30 +325,32 @@ def run_phase1_stub_detection(features: dict, force_verdict: str = None) -> floa
         elif force_verdict == "uncertain":
             return float(np.random.uniform(0.45, 0.65))
 
-    # Heuristic based on MFCC variance + spectral centroid
     try:
-        mfcc_stds  = features.get("mfcc_std", [])
-        sc_mean    = features.get("spectral_centroid_mean", 1500)
-        score_base = 0.5
-
-        # Higher spectral centroid → robotic synthetic voice → lower score
-        if sc_mean > 2500:
-            score_base -= 0.15
-        elif sc_mean < 1200:
-            score_base += 0.10
-
-        # Higher MFCC std → natural expressive voice → higher score
-        if mfcc_stds:
-            std_variance = np.mean(mfcc_stds)
-            if std_variance > 18:
-                score_base += 0.25
-            elif std_variance < 8:
-                score_base -= 0.25
-
-        return float(np.clip(score_base, 0.05, 0.95))
+        return _heuristic_score_from_arrays(
+            mfcc_stds=features.get("mfcc_std", []),
+            sc_mean=float(features.get("spectral_centroid_mean", 1500) or 1500),
+            zcr_mean=float(features.get("zero_crossing_rate_mean", 0.05) or 0.05),
+            mfcc_sequence=features.get("mfcc_sequence"),
+            flatness=float(features.get("spectral_flatness_mean", 0.1) or 0.1),
+            delta_std=features.get("mfcc_delta_std"),
+        )
     except Exception as e:
         print(f"[Detector] Heuristic error: {e}")
         return 0.5
+
+
+def heuristic_score_from_mfcc(mfcc: np.ndarray) -> float:
+    """Fast heuristic using only a (13, T) MFCC matrix — used for live/segment paths."""
+    if mfcc is None or mfcc.size == 0:
+        return 0.5
+    stds = np.std(mfcc, axis=1)
+    delta_std = float(np.mean(np.std(np.diff(mfcc, axis=1), axis=1))) if mfcc.shape[1] > 2 else 4.0
+    return _heuristic_score_from_arrays(
+        mfcc_stds=stds,
+        sc_mean=1500.0,
+        mfcc_sequence=mfcc,
+        delta_std=delta_std,
+    )
 
 
 # ── Phase 2: CNN Detector ──────────────────────────────────────────────────────
@@ -246,27 +359,24 @@ def run_phase2_cnn_detection(features: dict, force_verdict: str = None) -> float
     """
     Runs the trained SimpleCNNDetector using the fixed-length MFCC sequence.
     Falls back to Phase 1 if the model is not available.
+    Blends a light acoustic prior so out-of-domain clips are less brittle.
     """
     if force_verdict:
         return run_phase1_stub_detection(features, force_verdict)
 
     model, status = _load_cnn_model()
-    if status == "MODEL_UNAVAILABLE":
+    if status == "MODEL_UNAVAILABLE" or model is None:
         return run_phase1_stub_detection(features)
 
     try:
-        mfcc_sequence = np.asarray(features.get("mfcc_sequence", []), dtype=np.float32)
+        mfcc_sequence = _as_mfcc_array(features)
         if mfcc_sequence.shape != (N_MFCC, N_TIME_STEPS):
             return run_phase1_stub_detection(features)
 
-        # The values intentionally remain on the same scale as training/train.py.
-        # Unlike the previous mean-vector tiling, this retains speech dynamics.
-        tensor = torch.from_numpy(mfcc_sequence[np.newaxis, np.newaxis, :, :])
-
-        with torch.no_grad():
-            logits = model(tensor).item()
-            score = torch.sigmoid(torch.tensor(logits)).item()
-
+        cnn_score = float(_cnn_real_probability(model, mfcc_sequence[np.newaxis, ...])[0])
+        heuristic_score = run_phase1_stub_detection(features)
+        # CNN dominates; heuristic regularizes out-of-domain recordings.
+        score = 0.75 * cnn_score + 0.25 * heuristic_score
         return float(np.clip(score, 0.01, 0.99))
     except Exception as e:
         print(f"[Detector] Phase 2 inference error: {e} — falling back.")
@@ -297,22 +407,36 @@ def run_ai_detection(features: dict, phase: str = "phase1",
 def run_segment_detection(segments: list, phase: str = "phase1", force_verdict: str = None) -> list:
     """
     Runs ML prediction on an array of AudioSegment objects.
-    Returns a list of SegmentPrediction objects.
+    Batches CNN inference so a 10-segment clip is one forward pass, not ten.
     """
     from backend.detection.aggregator import SegmentPrediction
-    from backend.audio.features import extract_acoustic_features
-    from backend.config import settings
+    from backend.audio.features import extract_mfcc_for_model
+    from backend.config import settings as _settings
+
+    if not segments:
+        return []
 
     predictions = []
-    
-    for seg in segments:
-        # Extract features just for this segment
-        # In a real heavy model, we'd batch these for performance, but this fits the architecture
-        features = extract_acoustic_features(seg.audio_data, sr=settings.sample_rate)
-        
-        real_prob = run_ai_detection(features, phase=phase, force_verdict=force_verdict)
+    use_cnn = phase in ("phase2", "phase3", "phase4") and not force_verdict
+    model, status = (_load_cnn_model() if use_cnn else (None, None))
+    cnn_ready = use_cnn and status in ("REAL_MODEL", "DEMO_MODEL") and model is not None
+
+    mfccs = [extract_mfcc_for_model(seg.audio_data, sr=_settings.sample_rate) for seg in segments]
+
+    if force_verdict:
+        real_probs = [run_phase1_stub_detection({}, force_verdict) for _ in segments]
+    elif cnn_ready:
+        batch = np.stack(mfccs, axis=0)
+        cnn_probs = _cnn_real_probability(model, batch)
+        heur_probs = np.array([heuristic_score_from_mfcc(m) for m in mfccs], dtype=np.float64)
+        real_probs = np.clip(0.75 * cnn_probs + 0.25 * heur_probs, 0.01, 0.99).tolist()
+    else:
+        real_probs = [heuristic_score_from_mfcc(m) for m in mfccs]
+
+    for seg, real_prob in zip(segments, real_probs):
+        real_prob = float(real_prob)
         fake_prob = 1.0 - real_prob
-        
+
         if real_prob >= 0.75:
             pred_label = "REAL"
             conf = real_prob
@@ -322,7 +446,7 @@ def run_segment_detection(segments: list, phase: str = "phase1", force_verdict: 
         else:
             pred_label = "UNCERTAIN"
             conf = 1.0 - 2 * abs(real_prob - 0.5)
-            
+
         predictions.append(SegmentPrediction(
             segment_id=seg.segment_id,
             start_time=seg.start_time,
@@ -332,5 +456,5 @@ def run_segment_detection(segments: list, phase: str = "phase1", force_verdict: 
             predicted_label=pred_label,
             confidence=conf
         ))
-        
+
     return predictions
