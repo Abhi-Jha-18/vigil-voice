@@ -42,7 +42,9 @@ logging.basicConfig(
 logger = logging.getLogger("vigilvoice")
 
 # Static files directory (resolved from project root)
-STATIC_DIR = PROJECT_ROOT / "frontend" / "dist"
+# The Vite build emits into the 'static/' directory (see frontend/vite.config.js outDir),
+# and the Dockerfile copies it into /app/static/.
+STATIC_DIR = PROJECT_ROOT / "static"
 
 # App startup time (for uptime tracking)
 _start_time = time.time()
