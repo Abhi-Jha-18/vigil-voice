@@ -43,9 +43,9 @@ export const api = {
     }, 60000);
   },
 
-  createLiveSession: () => fetchWithTimeout(`${API_BASE_URL}/api/session`, { method: 'POST' }),
+  createLiveSession: () => fetchWithTimeout(`${API_BASE_URL}/api/live/session`, { method: 'POST' }),
   
-  getLiveStatus: (sessionId) => fetchWithTimeout(`${API_BASE_URL}/api/status/${sessionId}`),
+  getLiveStatus: (sessionId) => fetchWithTimeout(`${API_BASE_URL}/api/live/status/${sessionId}`),
   
-  getReportingResources: () => fetchWithTimeout(`${API_BASE_URL}/api/reporting-resources`)
+  getReportingResources: () => fetchWithTimeout(`${API_BASE_URL}/api/live/reporting-resources`)
 };
