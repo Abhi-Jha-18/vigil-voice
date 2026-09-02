@@ -73,7 +73,7 @@ export function UploadAnalysis() {
               type="file" 
               ref={fileInputRef} 
               className="hidden" 
-              accept="audio/*" 
+              accept="audio/*,video/mp4,video/quicktime,.wav,.mp3,.m4a,.mp4,.ogg,.flac,.webm,.aac" 
               onChange={handleFileChange}
             />
             
@@ -81,16 +81,18 @@ export function UploadAnalysis() {
               <UploadCloud className="w-8 h-8 text-primary" />
             </div>
             
-            <h3 className="text-xl font-medium mb-2">Drag & Drop Audio</h3>
+            <h3 className="text-xl font-medium mb-2">Drag & Drop Audio / Video</h3>
             <p className="text-secondary text-sm text-center mb-6">
               or click to browse your computer
             </p>
             
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap justify-center">
               <span className="badge bg-surface text-secondary">WAV</span>
               <span className="badge bg-surface text-secondary">MP3</span>
               <span className="badge bg-surface text-secondary">M4A</span>
+              <span className="badge bg-surface text-secondary">MP4</span>
               <span className="badge bg-surface text-secondary">OGG</span>
+              <span className="badge bg-surface text-secondary">FLAC</span>
             </div>
           </div>
 

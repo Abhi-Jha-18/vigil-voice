@@ -21,6 +21,7 @@ htmlcov/
 reports/*.png
 reports/*.json
 reports/*.csv
+reports/incidents/
 
 # ── Dataset (never commit raw audio/CSV) ────────────────────────────────────────
 data/raw/*

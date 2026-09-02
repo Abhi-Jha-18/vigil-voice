@@ -73,9 +73,9 @@ export default function ControlConsole({
               <svg className="upload-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4C9.11 4 6.6 5.64 5.35 8.04C2.34 8.36 0 10.91 0 14C0 17.31 2.69 20 6 20H19C21.76 20 24 17.76 24 15C24 12.36 21.95 10.22 19.35 10.04ZM19 18H6C3.79 18 2 16.21 2 14C2 11.95 3.53 10.24 5.56 10.03L6.63 9.92L7.13 8.97C8.08 7.14 9.94 6 12 6C14.89 6 17.38 8.01 17.9 10.88L18.15 12.26L19.55 12.36C20.96 12.46 22 13.63 22 15C22 16.65 20.65 18 19 18ZM8 13H10.55V16H13.45V13H16L12 9L8 13Z" fill="currentColor"/>
               </svg>
-              <p className="upload-text">Drag and drop audio file here or <span>browse files</span></p>
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Supports WAV, MP3, M4A, OGG up to 50MB</p>
-              <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="audio/*,video/mp4" style={{ display: 'none' }} />
+              <p className="upload-text">Drag and drop audio or video file here or <span>browse files</span></p>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Supports WAV, MP3, M4A, MP4, OGG up to 50MB</p>
+              <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="audio/*,video/mp4,video/quicktime,.wav,.mp3,.m4a,.mp4,.ogg,.flac,.webm,.aac" style={{ display: 'none' }} />
             </div>
           ) : (
             <div className="file-info-badge" style={{ display: 'flex' }}>
