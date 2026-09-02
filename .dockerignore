@@ -9,11 +9,13 @@ __pycache__
 .pytest_cache
 .coverage
 htmlcov
-reports
+reports/incidents/*
+!reports/robustness_report.json
 *.log
+*.exe
 .env
 .DS_Store
 Thumbs.db
 node_modules
 frontend/node_modules
-.venv
+
