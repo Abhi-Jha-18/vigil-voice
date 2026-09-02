@@ -132,7 +132,7 @@ def load_settings() -> Settings:
         sample_rate=int(os.getenv("SAMPLE_RATE", "16000")),
         max_upload_mb=int(os.getenv("MAX_UPLOAD_MB", "50")),
         max_audio_duration_seconds=float(os.getenv("MAX_AUDIO_DURATION_SECONDS", "120")),
-        inference_timeout_seconds=float(os.getenv("INFERENCE_TIMEOUT", "15.0")),
+        inference_timeout_seconds=float(os.getenv("INFERENCE_TIMEOUT", "60.0")),
         max_concurrent_inferences=int(os.getenv("MAX_CONCURRENT_INFERENCES", "10")),
         segment_duration_seconds=float(os.getenv("SEGMENT_DURATION_SECONDS", "4")),
         segment_overlap_seconds=float(os.getenv("SEGMENT_OVERLAP_SECONDS", "1")),

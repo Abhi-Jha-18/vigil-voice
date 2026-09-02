@@ -40,7 +40,7 @@ export const api = {
     return fetchWithTimeout(`${API_BASE_URL}/api/detect`, {
       method: 'POST',
       body: formData
-    }, 60000);
+    }, 90000);
   },
 
   createLiveSession: () => fetchWithTimeout(`${API_BASE_URL}/api/live/session`, { method: 'POST' }),

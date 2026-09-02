@@ -29,4 +29,6 @@ services:
         value: "models/cnn_weight.pth"
       - key: MODEL_VERSION
         value: "v1.0-production"
+      - key: INFERENCE_TIMEOUT
+        value: "60"
       # CORS_ORIGINS will be set automatically to your Render URL in the Dashboard

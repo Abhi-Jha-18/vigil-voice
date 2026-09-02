@@ -16,7 +16,7 @@ services:
       - DEBUG=false
       - LOG_LEVEL=info
       - MAX_UPLOAD_MB=50
-      - INFERENCE_TIMEOUT=15.0
+      - INFERENCE_TIMEOUT=60.0
       - MAX_CONCURRENT_INFERENCES=10
       - DEMO_MODE=false
     healthcheck:
