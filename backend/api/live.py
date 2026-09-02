@@ -29,11 +29,8 @@ from backend.detection.detector import (
     get_model_status,
     is_cnn_model_available,
     _load_cnn_model,
-<<<<<<< HEAD
     heuristic_score_from_mfcc,
-=======
     run_ai_detection,
->>>>>>> 20153ec (fix(detection): refine Phase 1 acoustic heuristic and Phase 2 CNN live inference, add model metadata and evaluation reports)
 )
 
 logger = logging.getLogger("vigilvoice.live")

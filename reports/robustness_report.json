@@ -1,0 +1,424 @@
+{
+  "status": "COMPLETED",
+  "provenance": {
+    "model_status": "REAL_MODEL",
+    "model_checkpoint": "models\\production\\vigilvoice_cnn_best.pth",
+    "model_sha256": "266f1ca2aaab1c863094a1814dadd52d70f26dbf566a648420ced036ff4c7bba",
+    "dataset": "ASVspoof_or_similar",
+    "dataset_type": "REAL",
+    "manifest": "data\\splits\\manifest.csv",
+    "split": "test",
+    "sample_rate": 16000,
+    "seed": 42,
+    "timestamp": "2026-09-02T14:04:20"
+  },
+  "model_status": "REAL_MODEL",
+  "model_sha256": "266f1ca2aaab1c863094a1814dadd52d70f26dbf566a648420ced036ff4c7bba",
+  "dataset": "ASVspoof_or_similar",
+  "split": "test",
+  "test_samples": 4,
+  "baseline": {
+    "samples": 4,
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "far": 0.0,
+    "frr": 0.0,
+    "roc_auc": 1.0,
+    "eer": 0.0,
+    "eer_threshold": 8.873985290527344
+  },
+  "conditions": {
+    "clean": {
+      "samples": 4,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "far": 0.0,
+      "frr": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "eer_threshold": 8.873985290527344
+    },
+    "noise_20db": {
+      "samples": 4,
+      "accuracy": 0.5,
+      "precision": 0.5,
+      "recall": 1.0,
+      "f1": 0.6666666666666666,
+      "far": 1.0,
+      "frr": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "eer_threshold": 6.851310729980469
+    },
+    "noise_10db": {
+      "samples": 4,
+      "accuracy": 0.5,
+      "precision": 0.5,
+      "recall": 1.0,
+      "f1": 0.6666666666666666,
+      "far": 1.0,
+      "frr": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "eer_threshold": 3.761793613433838
+    },
+    "noise_5db": {
+      "samples": 4,
+      "accuracy": 0.5,
+      "precision": 0.5,
+      "recall": 1.0,
+      "f1": 0.6666666666666666,
+      "far": 1.0,
+      "frr": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "eer_threshold": 2.657679319381714
+    },
+    "noise_0db": {
+      "samples": 4,
+      "accuracy": 0.5,
+      "precision": 0.5,
+      "recall": 1.0,
+      "f1": 0.6666666666666666,
+      "far": 1.0,
+      "frr": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "eer_threshold": 2.1355202198028564
+    },
+    "resample_8khz": {
+      "samples": 4,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "far": 0.0,
+      "frr": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "eer_threshold": 12.559459686279297
+    },
+    "resample_22khz": {
+      "samples": 4,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "far": 0.0,
+      "frr": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "eer_threshold": 8.988765716552734
+    },
+    "resample_44khz": {
+      "samples": 4,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "far": 0.0,
+      "frr": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "eer_threshold": 8.988746643066406
+    },
+    "volume_-12db": {
+      "samples": 4,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "far": 0.0,
+      "frr": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "eer_threshold": 6.613719940185547
+    },
+    "volume_-6db": {
+      "samples": 4,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "far": 0.0,
+      "frr": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "eer_threshold": 8.53079891204834
+    },
+    "volume_+6db": {
+      "samples": 4,
+      "accuracy": 0.75,
+      "precision": 0.6666666666666666,
+      "recall": 1.0,
+      "f1": 0.8,
+      "far": 0.5,
+      "frr": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "eer_threshold": 7.348081588745117
+    },
+    "short_audio_1s": {
+      "samples": 4,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "far": 0.0,
+      "frr": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "eer_threshold": 3.4415764808654785
+    },
+    "short_audio_3s": {
+      "samples": 4,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "far": 0.0,
+      "frr": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "eer_threshold": 8.873985290527344
+    },
+    "reverberation_mild": {
+      "samples": 4,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "far": 0.0,
+      "frr": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "eer_threshold": 8.450094223022461
+    },
+    "combined_noise_volume": {
+      "samples": 4,
+      "accuracy": 0.5,
+      "precision": 0.5,
+      "recall": 1.0,
+      "f1": 0.6666666666666666,
+      "far": 1.0,
+      "frr": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "eer_threshold": 3.771284580230713
+    },
+    "combined_resample_noise": {
+      "samples": 4,
+      "accuracy": 0.5,
+      "precision": 0.5,
+      "recall": 1.0,
+      "f1": 0.6666666666666666,
+      "far": 1.0,
+      "frr": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "eer_threshold": 3.771597146987915
+    }
+  },
+  "degradation": {
+    "clean": {
+      "accuracy_delta": 0.0,
+      "eer_delta": 0.0,
+      "roc_auc_delta": 0.0,
+      "far_delta": 0.0,
+      "frr_delta": 0.0
+    },
+    "noise_20db": {
+      "accuracy_delta": -0.5,
+      "eer_delta": 0.0,
+      "roc_auc_delta": 0.0,
+      "far_delta": 1.0,
+      "frr_delta": 0.0
+    },
+    "noise_10db": {
+      "accuracy_delta": -0.5,
+      "eer_delta": 0.0,
+      "roc_auc_delta": 0.0,
+      "far_delta": 1.0,
+      "frr_delta": 0.0
+    },
+    "noise_5db": {
+      "accuracy_delta": -0.5,
+      "eer_delta": 0.0,
+      "roc_auc_delta": 0.0,
+      "far_delta": 1.0,
+      "frr_delta": 0.0
+    },
+    "noise_0db": {
+      "accuracy_delta": -0.5,
+      "eer_delta": 0.0,
+      "roc_auc_delta": 0.0,
+      "far_delta": 1.0,
+      "frr_delta": 0.0
+    },
+    "resample_8khz": {
+      "accuracy_delta": 0.0,
+      "eer_delta": 0.0,
+      "roc_auc_delta": 0.0,
+      "far_delta": 0.0,
+      "frr_delta": 0.0
+    },
+    "resample_22khz": {
+      "accuracy_delta": 0.0,
+      "eer_delta": 0.0,
+      "roc_auc_delta": 0.0,
+      "far_delta": 0.0,
+      "frr_delta": 0.0
+    },
+    "resample_44khz": {
+      "accuracy_delta": 0.0,
+      "eer_delta": 0.0,
+      "roc_auc_delta": 0.0,
+      "far_delta": 0.0,
+      "frr_delta": 0.0
+    },
+    "volume_-12db": {
+      "accuracy_delta": 0.0,
+      "eer_delta": 0.0,
+      "roc_auc_delta": 0.0,
+      "far_delta": 0.0,
+      "frr_delta": 0.0
+    },
+    "volume_-6db": {
+      "accuracy_delta": 0.0,
+      "eer_delta": 0.0,
+      "roc_auc_delta": 0.0,
+      "far_delta": 0.0,
+      "frr_delta": 0.0
+    },
+    "volume_+6db": {
+      "accuracy_delta": -0.25,
+      "eer_delta": 0.0,
+      "roc_auc_delta": 0.0,
+      "far_delta": 0.5,
+      "frr_delta": 0.0
+    },
+    "short_audio_1s": {
+      "accuracy_delta": 0.0,
+      "eer_delta": 0.0,
+      "roc_auc_delta": 0.0,
+      "far_delta": 0.0,
+      "frr_delta": 0.0
+    },
+    "short_audio_3s": {
+      "accuracy_delta": 0.0,
+      "eer_delta": 0.0,
+      "roc_auc_delta": 0.0,
+      "far_delta": 0.0,
+      "frr_delta": 0.0
+    },
+    "reverberation_mild": {
+      "accuracy_delta": 0.0,
+      "eer_delta": 0.0,
+      "roc_auc_delta": 0.0,
+      "far_delta": 0.0,
+      "frr_delta": 0.0
+    },
+    "combined_noise_volume": {
+      "accuracy_delta": -0.5,
+      "eer_delta": 0.0,
+      "roc_auc_delta": 0.0,
+      "far_delta": 1.0,
+      "frr_delta": 0.0
+    },
+    "combined_resample_noise": {
+      "accuracy_delta": -0.5,
+      "eer_delta": 0.0,
+      "roc_auc_delta": 0.0,
+      "far_delta": 1.0,
+      "frr_delta": 0.0
+    }
+  },
+  "threshold_analysis": [
+    {
+      "threshold": 0.1,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "far": 0.0,
+      "frr": 0.0
+    },
+    {
+      "threshold": 0.2,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "far": 0.0,
+      "frr": 0.0
+    },
+    {
+      "threshold": 0.3,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "far": 0.0,
+      "frr": 0.0
+    },
+    {
+      "threshold": 0.4,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "far": 0.0,
+      "frr": 0.0
+    },
+    {
+      "threshold": 0.5,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "far": 0.0,
+      "frr": 0.0
+    },
+    {
+      "threshold": 0.6,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "far": 0.0,
+      "frr": 0.0
+    },
+    {
+      "threshold": 0.7,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "far": 0.0,
+      "frr": 0.0
+    },
+    {
+      "threshold": 0.8,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "far": 0.0,
+      "frr": 0.0
+    },
+    {
+      "threshold": 0.9,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "far": 0.0,
+      "frr": 0.0
+    }
+  ],
+  "eer_recommended_threshold": 8.873985290527344
+}

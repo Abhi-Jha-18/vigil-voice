@@ -20,6 +20,7 @@ htmlcov/
 # ── Reports / Temp ──────────────────────────────────────────────────────────────
 reports/*.png
 reports/*.json
+!reports/robustness_report.json
 reports/*.csv
 reports/incidents/
 

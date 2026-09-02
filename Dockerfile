@@ -40,6 +40,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY backend /app/backend
 COPY models /app/models
 COPY data /app/data
+COPY training /app/training
+COPY reports /app/reports
 
 # Copy the compiled frontend (index.html + assets) served by FastAPI
 COPY --from=frontend /build/static /app/static
