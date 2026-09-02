@@ -1,6 +1,17 @@
-# VigilVoice — Production Container Image (Phase 14)
-# Multi-stage / lightweight Python 3.11 build for secure CPU execution
+# Stage 1: Build the frontend
+FROM node:20-alpine AS frontend-builder
 
+WORKDIR /app/frontend
+# Install dependencies
+COPY frontend/package*.json ./
+RUN npm ci
+
+# Build the app
+COPY frontend/ ./
+RUN npm run build
+
+# Stage 2: Production Container Image (Phase 14)
+# Lightweight Python 3.11 build for secure CPU execution
 FROM python:3.11-slim as base
 
 # Prevent Python from writing .pyc files and enable unbuffered output
@@ -23,7 +34,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 # Copy application source
 COPY backend /app/backend
-COPY static /app/static
+COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
 COPY models /app/models
 COPY data /app/data
 
