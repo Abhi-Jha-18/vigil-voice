@@ -32,6 +32,7 @@ from backend.detection.decision import make_decision
 from backend.config import PROJECT_ROOT, settings
 from backend.api.stream import router as stream_router
 from backend.api.live import router as live_router
+from backend.api.incidents import router as incidents_router
 
 # ── Logging Configuration ──────────────────────────────────────────────────────
 logging.basicConfig(
@@ -60,6 +61,7 @@ app = FastAPI(
 
 app.include_router(stream_router)
 app.include_router(live_router)
+app.include_router(incidents_router)
 
 VALID_PHASES = {"phase1", "phase2", "phase3", "phase4"}
 VALID_DEMO_VERDICTS = {"real", "fake", "uncertain"}
@@ -538,19 +540,56 @@ async def _run_analysis_pipeline(temp_path: str, phase: str, force_verdict: Opti
     return await asyncio.to_thread(_sync_pipeline)
 
 
-# ── Static File Serving ────────────────────────────────────────────────────────
-
-@app.get("/", include_in_schema=False)
-async def get_index():
-    index_file = STATIC_DIR / "index.html"
-    if index_file.exists():
-        return FileResponse(index_file)
-    return JSONResponse(
-        status_code=404,
-        content={"success": False, "error": {"code": "NOT_FOUND", "message": "index.html was not found."}}
-    )
+# ── Static File Serving & SPA Fallback ─────────────────────────────────────────
+# The React build (Vite) is emitted into STATIC_DIR. Hashed assets under /assets
+# are served by StaticFiles; any other non-API GET path returns index.html so the
+# React Router can handle client-side routes (e.g. /live, /incidents/:id).
 
 if STATIC_DIR.exists():
-    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+    # Vite emits content-hashed, long-lived cacheable bundles under /assets.
+    _assets_dir = STATIC_DIR / "assets"
+    if _assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=_assets_dir), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str):
+        # Never shadow API routes (they are registered before this catch-all, but
+        # guard explicitly for clarity).
+        if full_path.startswith("api/"):
+            return JSONResponse(
+                status_code=404,
+                content={"success": False, "error": {"code": "NOT_FOUND", "message": "Unknown API endpoint."}},
+            )
+
+        # Serve a real static file if it exists (favicon, robots.txt, etc.).
+        if full_path:
+            candidate = (STATIC_DIR / full_path).resolve()
+            try:
+                candidate.relative_to(STATIC_DIR.resolve())
+            except ValueError:
+                return JSONResponse(status_code=404, content={"detail": "Not found."})
+            if candidate.is_file():
+                return FileResponse(candidate)
+
+        # Otherwise hand control to the React single-page app.
+        index_file = STATIC_DIR / "index.html"
+        if index_file.exists():
+            return FileResponse(index_file)
+        return JSONResponse(
+            status_code=404,
+            content={"success": False, "error": {"code": "NOT_FOUND", "message": "Frontend build (static/index.html) was not found."}},
+        )
 else:
     logger.warning(f"Static files directory not found at {STATIC_DIR}")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def no_frontend_fallback(full_path: str):
+        if full_path.startswith("api/"):
+            return JSONResponse(
+                status_code=404,
+                content={"success": False, "error": {"code": "NOT_FOUND", "message": "Unknown API endpoint."}},
+            )
+        return JSONResponse(
+            status_code=404,
+            content={"success": False, "error": {"code": "NOT_FOUND", "message": "Frontend build not deployed."}},
+        )

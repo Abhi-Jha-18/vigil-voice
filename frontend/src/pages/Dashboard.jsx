@@ -1,141 +1,176 @@
-import React from 'react';
-import { PageContainer } from '../components/layout/PageContainer';
-import { StatCard } from '../components/dashboard/StatCard';
-import { useSystemStatus } from '../hooks/useSystemStatus';
-import { useModelStatus } from '../hooks/useModelStatus';
-import { Activity, Cpu, ShieldAlert, Clock, CheckCircle, XCircle } from 'lucide-react';
+import { useMemo } from 'react'
+import { Link } from 'react-router-dom'
+import {
+  Siren,
+  AlertTriangle,
+  ShieldAlert,
+  Gauge,
+  Radio,
+  UploadCloud,
+  Cpu,
+  BarChart3,
+  PieChart as PieIcon,
+} from 'lucide-react'
 import {
   ResponsiveContainer,
-  AreaChart,
-  Area,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
+  Tooltip,
   CartesianGrid,
-  Tooltip
-} from 'recharts';
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+} from 'recharts'
+import PageContainer, { PageHeader } from '../components/layout/PageContainer'
+import StatCard from '../components/dashboard/StatCard'
+import SystemStatus from '../components/dashboard/SystemStatus'
+import RecentIncidents from '../components/dashboard/RecentIncidents'
+import { useIncidents } from '../hooks/useIncidents'
+import { riskMeta } from '../utils/risk'
 
-// Fictional data representing an empty state or placeholder graph for visual completeness
-// since the backend does not expose historical timeseries analytics yet.
-const mockActivityData = [
-  { time: '00:00', load: 12 },
-  { time: '04:00', load: 18 },
-  { time: '08:00', load: 45 },
-  { time: '12:00', load: 60 },
-  { time: '16:00', load: 35 },
-  { time: '20:00', load: 20 },
-  { time: '24:00', load: 15 },
-];
+export default function Dashboard({ model }) {
+  const { incidents, loading } = useIncidents()
 
-export function Dashboard() {
-  const { systemInfo, isLoading: sysLoading } = useSystemStatus();
-  const { status: modelInfo, isLoading: modelLoading } = useModelStatus();
+  const stats = useMemo(() => {
+    const total = incidents.length
+    const high = incidents.filter((i) => i.risk_level === 'HIGH_SPOOF_RISK').length
+    const susp = incidents.filter((i) => i.risk_level === 'SUSPICIOUS').length
+    const avgPeak = total
+      ? Math.round((incidents.reduce((a, i) => a + (i.peak_spoof_score || 0), 0) / total) * 100)
+      : 0
+    return { total, high, susp, avgPeak }
+  }, [incidents])
 
-  function formatUptime(seconds) {
-    if (!seconds) return '0h 0m';
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    return `${h}h ${m}m`;
-  }
+  const distribution = useMemo(() => {
+    const counts = { LOW_RISK: 0, SUSPICIOUS: 0, HIGH_SPOOF_RISK: 0 }
+    incidents.forEach((i) => {
+      counts[i.risk_level] = (counts[i.risk_level] || 0) + 1
+    })
+    return [
+      { name: 'Low Risk', value: counts.LOW_RISK, color: riskMeta('LOW_RISK').color },
+      { name: 'Suspicious', value: counts.SUSPICIOUS, color: riskMeta('SUSPICIOUS').color },
+      { name: 'High Spoof', value: counts.HIGH_SPOOF_RISK, color: riskMeta('HIGH_SPOOF_RISK').color },
+    ]
+  }, [incidents])
 
-  const isCnnAvailable = systemInfo?.models?.phase2_cnn?.available;
-  const currentModelStatus = modelInfo?.model_status || 'UNKNOWN';
-  
+  const activity = useMemo(() => {
+    // Group saved incidents by day for a real (not fabricated) activity chart.
+    const byDay = {}
+    incidents.forEach((i) => {
+      const d = new Date(i.created_at * 1000)
+      const key = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+      byDay[key] = (byDay[key] || 0) + 1
+    })
+    return Object.entries(byDay)
+      .map(([day, count]) => ({ day, count }))
+      .slice(-7)
+  }, [incidents])
+
   return (
-    <PageContainer title="System Dashboard">
-      {/* Overview Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <StatCard 
-          title="Engine Status" 
-          value={currentModelStatus === 'REAL_MODEL' ? 'Secure' : currentModelStatus} 
-          subtitle={sysLoading ? 'Loading...' : `VigilVoice Core v${systemInfo?.version || '1.0'}`}
-          icon={ShieldAlert}
-          colorClass={currentModelStatus === 'REAL_MODEL' ? 'text-success' : 'text-warning'}
-        />
-        <StatCard 
-          title="Uptime" 
-          value={sysLoading ? '...' : formatUptime(systemInfo?.uptime_seconds)}
-          subtitle="Since last restart"
-          icon={Clock}
-          colorClass="text-primary"
-        />
-        <StatCard 
-          title="Phase 2 CNN" 
-          value={isCnnAvailable ? 'Online' : 'Offline'}
-          subtitle={systemInfo?.models?.phase2_cnn?.version || 'N/A'}
-          icon={Cpu}
-          colorClass={isCnnAvailable ? 'text-success' : 'text-danger'}
-        />
-        <StatCard 
-          title="Live Analyses" 
-          value="No Data"
-          subtitle="Endpoint not available"
-          icon={Activity}
-          colorClass="text-secondary"
-        />
+    <PageContainer>
+      <PageHeader
+        title="Security Command Center"
+        description="Real-time overview of the VigilVoice detection engine, model health, and saved voice-spoofing incidents."
+        actions={
+          <>
+            <Link to="/live" className="btn-primary">
+              <Radio size={15} /> Live Monitor
+            </Link>
+            <Link to="/analyze" className="btn-ghost">
+              <UploadCloud size={15} /> Analyze Audio
+            </Link>
+          </>
+        }
+      />
+
+      {/* Stat cards — derived only from real saved incidents */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard icon={Siren} label="Saved incidents" value={stats.total} sub="From evidence exports" accent="#22d3ee" loading={loading} />
+        <StatCard icon={AlertTriangle} label="Suspicious" value={stats.susp} accent="#fbbf24" loading={loading} />
+        <StatCard icon={ShieldAlert} label="High-risk events" value={stats.high} accent="#fb7185" loading={loading} />
+        <StatCard icon={Gauge} label="Avg peak spoof" value={`${stats.avgPeak}%`} accent="#a78bfa" loading={loading} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Model Details Panel */}
-        <div className="lg:col-span-1 glass-panel">
-          <h3 className="text-lg font-semibold mb-4 border-b border-border pb-2">Active Detection Models</h3>
-          <div className="space-y-4">
-            <div className="p-4 rounded-xl bg-surface/50 border border-border">
-              <div className="flex justify-between items-center mb-2">
-                <span className="font-medium text-white">Phase 1: Heuristic</span>
-                {systemInfo?.models?.phase1_heuristic?.available ? 
-                  <CheckCircle className="w-5 h-5 text-success" /> : 
-                  <XCircle className="w-5 h-5 text-danger" />
-                }
+      <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-3">
+        {/* Charts */}
+        <div className="space-y-5 lg:col-span-2">
+          <div className="panel p-5">
+            <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-200">
+              <BarChart3 size={16} className="text-cyan-300" /> Incident activity
+              <span className="text-[11px] font-normal text-slate-500">· saved records by day</span>
+            </h3>
+            {activity.length > 0 ? (
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={activity} margin={{ top: 4, right: 8, left: -22, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.08)" vertical={false} />
+                    <XAxis dataKey="day" stroke="#475569" fontSize={11} tickLine={false} axisLine={false} />
+                    <YAxis allowDecimals={false} stroke="#475569" fontSize={11} tickLine={false} axisLine={false} />
+                    <Tooltip
+                      cursor={{ fill: 'rgba(148,163,184,0.06)' }}
+                      contentStyle={{ background: '#0e121b', border: '1px solid rgba(148,163,184,0.2)', borderRadius: 10, fontSize: 12 }}
+                      formatter={(v) => [v, 'Incidents']}
+                    />
+                    <Bar dataKey="count" fill="#22d3ee" radius={[6, 6, 0, 0]} maxBarSize={48} />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
-              <p className="text-xs text-secondary">Acoustic variance & spectral centroid analysis</p>
-            </div>
-            
-            <div className="p-4 rounded-xl bg-surface/50 border border-border">
-              <div className="flex justify-between items-center mb-2">
-                <span className="font-medium text-white">Phase 2: CNN</span>
-                {isCnnAvailable ? 
-                  <CheckCircle className="w-5 h-5 text-success" /> : 
-                  <XCircle className="w-5 h-5 text-danger" />
-                }
+            ) : (
+              <ChartEmpty label="No saved incidents yet — run live monitoring and export evidence to see activity." />
+            )}
+          </div>
+
+          <div className="panel p-5">
+            <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-200">
+              <PieIcon size={16} className="text-cyan-300" /> Risk distribution
+            </h3>
+            {stats.total > 0 ? (
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={distribution.filter((d) => d.value > 0)} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={3}>
+                      {distribution.map((d) => (
+                        <Cell key={d.name} fill={d.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ background: '#0e121b', border: '1px solid rgba(148,163,184,0.2)', borderRadius: 10, fontSize: 12 }} />
+                    <Legend wrapperStyle={{ fontSize: 12, color: '#94a3b8' }} />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
-              <p className="text-xs text-secondary">Deep spectrogram analysis network</p>
-              {modelInfo?.evaluation?.eer !== undefined && (
-                <div className="mt-2 text-xs text-primary flex gap-2">
-                  <span>EER: {(modelInfo.evaluation.eer * 100).toFixed(2)}%</span>
-                  <span>|</span>
-                  <span>AUC: {modelInfo.evaluation.roc_auc?.toFixed(4)}</span>
-                </div>
-              )}
-            </div>
+            ) : (
+              <ChartEmpty label="Risk distribution appears once incidents are recorded." />
+            )}
           </div>
         </div>
 
-        {/* Activity Chart (Placeholder for now) */}
-        <div className="lg:col-span-2 glass-panel flex flex-col">
-          <h3 className="text-lg font-semibold mb-4">System Activity (24h)</h3>
-          <p className="text-xs text-secondary mb-4">Note: Real-time historical plotting API is currently unavailable. This is a placeholder visualization.</p>
-          <div className="flex-1 w-full h-64 min-h-[250px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={mockActivityData}>
-                <defs>
-                  <linearGradient id="colorLoad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#06b6d4" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                <XAxis dataKey="time" stroke="#a0a0c0" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="#a0a0c0" fontSize={12} tickLine={false} axisLine={false} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#191632', borderColor: 'rgba(255,255,255,0.1)' }}
-                  itemStyle={{ color: '#06b6d4' }}
-                />
-                <Area type="monotone" dataKey="load" stroke="#06b6d4" strokeWidth={2} fillOpacity={1} fill="url(#colorLoad)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+        {/* Right column */}
+        <div className="space-y-5">
+          <SystemStatus model={model} />
+          <RecentIncidents incidents={incidents} loading={loading} />
+          <Link to="/model" className="panel-soft flex items-center gap-3 p-4 transition hover:bg-white/[0.04]">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-300">
+              <Cpu size={18} />
+            </span>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-slate-200">Model &amp; AI Center</p>
+              <p className="text-[11px] text-slate-500">Architecture, metrics &amp; integrity</p>
+            </div>
+          </Link>
         </div>
       </div>
     </PageContainer>
-  );
+  )
+}
+
+function ChartEmpty({ label }) {
+  return (
+    <div className="flex h-56 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-line text-center">
+      <BarChart3 size={22} className="text-slate-600" />
+      <p className="max-w-xs text-xs text-slate-500">{label}</p>
+    </div>
+  )
 }

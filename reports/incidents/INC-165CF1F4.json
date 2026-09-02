@@ -1,0 +1,62 @@
+{
+  "incident_id": "INC-165CF1F4",
+  "session_id": "9f300dae69724b38995f02ad358f9bb7",
+  "created_at": 1788305938.0416682,
+  "duration_seconds": 3.5,
+  "analyzed_windows": 2,
+  "suspicious_windows": 2,
+  "average_spoof_score": 0.75,
+  "peak_spoof_score": 0.75,
+  "risk_level": "HIGH_SPOOF_RISK",
+  "model_status": "HEURISTIC_ONLY",
+  "model_sha256": null,
+  "timeline": [
+    {
+      "window_id": 0,
+      "start_time": 0.0,
+      "end_time": 2.5,
+      "fake_probability": 0.75,
+      "real_probability": 0.25,
+      "risk_score": 75.0,
+      "risk_level": "HIGH_SPOOF_RISK",
+      "status": "ANALYZED",
+      "confidence": 75.0,
+      "is_suspicious": true
+    },
+    {
+      "window_id": 1,
+      "start_time": 1.0,
+      "end_time": 3.5,
+      "fake_probability": 0.75,
+      "real_probability": 0.25,
+      "risk_score": 75.0,
+      "risk_level": "HIGH_SPOOF_RISK",
+      "status": "ANALYZED",
+      "confidence": 75.0,
+      "is_suspicious": true
+    }
+  ],
+  "social_engineering_indicators": [],
+  "disclaimer": "Detection is probabilistic and indicates acoustic anomalies associated with synthetic speech. VigilVoice does not make legal accusations or automatically file reports.",
+  "official_reporting_resources": {
+    "national_cyber_crime_portal": {
+      "name": "National Cyber Crime Reporting Portal",
+      "url": "https://www.cybercrime.gov.in/",
+      "purpose": "Official Government of India portal to report cybercrime incidents and financial fraud."
+    },
+    "i4c_ncrp_suspect_report": {
+      "name": "I4C / NCRP Report Suspect Identifier",
+      "url": "https://www.cybercrime.gov.in/Webform/cyber_suspect.aspx",
+      "purpose": "Report suspicious identifiers such as phone numbers, emails, bank accounts, or websites."
+    },
+    "sanchar_saathi_chakshu": {
+      "name": "Sanchar Saathi \u2014 Chakshu Portal",
+      "url": "https://sancharsaathi.gov.in/",
+      "purpose": "Report suspected fraudulent communication received via call, SMS, or WhatsApp."
+    },
+    "cyber_crime_helpline": {
+      "number": "1930",
+      "description": "For immediate cyber/financial fraud assistance, contact the national cybercrime helpline at 1930."
+    }
+  }
+}

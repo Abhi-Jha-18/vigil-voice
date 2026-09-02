@@ -1,18 +1,20 @@
-import React from 'react';
-
-export function StatCard({ title, value, subtitle, icon: Icon, colorClass = "text-primary" }) {
+export default function StatCard({ icon: Icon, label, value, sub, accent = '#22d3ee', loading }) {
   return (
-    <div className="glass-panel flex items-start gap-4">
-      <div className={`p-3 rounded-xl bg-surface border border-border ${colorClass}`}>
-        <Icon className="w-6 h-6" />
+    <div className="panel-soft relative overflow-hidden p-4">
+      <div
+        className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full opacity-20 blur-2xl"
+        style={{ background: accent }}
+      />
+      <div className="flex items-center justify-between">
+        <span className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: `${accent}1a`, color: accent }}>
+          {Icon ? <Icon size={18} /> : null}
+        </span>
       </div>
-      <div>
-        <p className="text-sm font-medium text-secondary">{title}</p>
-        <h3 className="text-2xl font-bold mt-1 text-white">{value}</h3>
-        {subtitle && (
-          <p className="text-xs text-secondary mt-1">{subtitle}</p>
-        )}
-      </div>
+      <p className="mt-3 font-mono text-2xl font-bold text-white">
+        {loading ? <span className="inline-block h-7 w-16 animate-pulse rounded bg-white/10" /> : value}
+      </p>
+      <p className="text-xs font-medium text-slate-400">{label}</p>
+      {sub && <p className="mt-0.5 text-[11px] text-slate-600">{sub}</p>}
     </div>
-  );
+  )
 }

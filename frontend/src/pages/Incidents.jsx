@@ -1,37 +1,92 @@
-import React from 'react';
-import { PageContainer } from '../components/layout/PageContainer';
-import { AlertTriangle, Filter, Search } from 'lucide-react';
+import { useMemo, useState } from 'react'
+import { Siren, Search } from 'lucide-react'
+import PageContainer, { PageHeader } from '../components/layout/PageContainer'
+import IncidentCard from '../components/incidents/IncidentCard'
+import EmptyState from '../components/common/EmptyState'
+import ErrorState from '../components/common/ErrorState'
+import { Skeleton } from '../components/common/Loading'
+import { useIncidents } from '../hooks/useIncidents'
 
-export function Incidents() {
+const FILTERS = [
+  { key: 'ALL', label: 'All' },
+  { key: 'LOW_RISK', label: 'Low' },
+  { key: 'SUSPICIOUS', label: 'Suspicious' },
+  { key: 'HIGH_SPOOF_RISK', label: 'High Risk' },
+]
+
+export default function Incidents() {
+  const { incidents, loading, error, refresh } = useIncidents()
+  const [filter, setFilter] = useState('ALL')
+  const [query, setQuery] = useState('')
+
+  const filtered = useMemo(() => {
+    return incidents
+      .filter((i) => (filter === 'ALL' ? true : i.risk_level === filter))
+      .filter((i) =>
+        query ? i.incident_id.toLowerCase().includes(query.toLowerCase()) : true,
+      )
+      .sort((a, b) => b.created_at - a.created_at)
+  }, [incidents, filter, query])
+
   return (
-    <PageContainer title="Incident Center">
-      <div className="glass-panel mb-6 flex flex-col md:flex-row gap-4 justify-between items-center">
-        <div className="relative w-full md:w-96">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-secondary" />
-          <input 
-            type="text" 
-            placeholder="Search incident ID..." 
-            className="w-full bg-surface/50 border border-border rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-primary transition-colors"
-            disabled
+    <PageContainer>
+      <PageHeader
+        title="Incident Center"
+        description="Saved detection incidents from live monitoring. These are probabilistic risk records, not legal findings."
+      />
+
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap gap-1.5">
+          {FILTERS.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setFilter(f.key)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                filter === f.key
+                  ? 'bg-cyan-500/15 text-cyan-200 ring-1 ring-inset ring-cyan-500/30'
+                  : 'bg-white/5 text-slate-400 hover:bg-white/10'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <div className="relative sm:w-64">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search incident ID…"
+            className="input-base pl-9"
           />
         </div>
-        <div className="flex gap-2 w-full md:w-auto">
-          <button className="flex items-center gap-2 px-4 py-2 bg-surface border border-border rounded-lg text-sm text-secondary hover:text-white transition-colors" disabled>
-            <Filter className="w-4 h-4" /> Filter
-          </button>
-        </div>
       </div>
 
-      <div className="glass-panel overflow-hidden">
-        <div className="p-16 flex flex-col items-center justify-center text-center">
-          <AlertTriangle className="w-16 h-16 text-secondary/50 mb-4" />
-          <h3 className="text-xl font-medium text-white mb-2">No historical data available</h3>
-          <p className="text-secondary max-w-md">
-            The FastAPI backend does not currently expose a historical global incident reporting API. 
-            Live session incidents are processed transiently per session.
-          </p>
+      {error && <ErrorState title="Could not load incidents" message={error} onRetry={refresh} />}
+
+      {!error && loading && (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-44" />
+          ))}
         </div>
-      </div>
+      )}
+
+      {!error && !loading && filtered.length === 0 && (
+        <EmptyState
+          icon={Siren}
+          title="No incidents yet"
+          description="Live-detection incidents are saved here when suspicious activity is detected and evidence is exported."
+        />
+      )}
+
+      {!error && !loading && filtered.length > 0 && (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {filtered.map((inc) => (
+            <IncidentCard key={inc.incident_id} incident={inc} />
+          ))}
+        </div>
+      )}
     </PageContainer>
-  );
+  )
 }

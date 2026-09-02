@@ -1,40 +1,53 @@
-import React from 'react';
-import { Bell, User } from 'lucide-react';
-import { useModelStatus } from '../../hooks/useModelStatus';
+import { Menu, Activity } from 'lucide-react'
+import { modelStatusMeta } from '../../utils/risk'
+import Badge from '../common/Badge'
 
-export function Topbar() {
-  const { status, isLoading } = useModelStatus();
+export default function Topbar({ onMenu, title, model }) {
+  const online = model?.online
+  const status = model?.health?.model_status || model?.modelInfo?.model_status || null
+  const meta = status ? modelStatusMeta(status) : null
 
   return (
-    <header className="h-16 border-b border-border bg-surface/50 backdrop-blur flex items-center justify-between px-6 sticky top-0 z-10">
-      <div className="flex items-center">
-        <h1 className="text-lg font-medium text-white/90">Command Center</h1>
-      </div>
-      
-      <div className="flex items-center gap-6">
-        <div className="hidden sm:flex items-center gap-2">
-          <span className="text-xs text-secondary">Engine Status:</span>
-          {isLoading ? (
-            <span className="badge bg-surface text-secondary">Checking...</span>
-          ) : (
-            <span className={`badge ${
-              status?.model_status === 'REAL_MODEL' ? 'badge-success' :
-              status?.model_status === 'DEMO_MODEL' ? 'badge-warning' : 'badge-danger'
-            }`}>
-              {status?.model_status || 'UNAVAILABLE'}
-            </span>
-          )}
-        </div>
-        
-        <button className="text-secondary hover:text-white transition-colors relative">
-          <Bell className="w-5 h-5" />
-          <span className="absolute top-0 right-0 w-2 h-2 bg-danger rounded-full ring-2 ring-[#0a0914]"></span>
+    <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-3 border-b border-line bg-ink-950/80 px-4 backdrop-blur-xl sm:px-6">
+      <div className="flex items-center gap-3">
+        <button
+          className="rounded-md p-2 text-slate-400 hover:bg-white/10 lg:hidden"
+          onClick={onMenu}
+          aria-label="Open menu"
+        >
+          <Menu size={20} />
         </button>
-        
-        <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center">
-          <User className="w-4 h-4 text-secondary" />
+        <div>
+          <h1 className="text-[15px] font-semibold text-white sm:text-base">{title}</h1>
+          <p className="hidden text-xs text-slate-500 sm:block">
+            AI voice deepfake &amp; spoofing detection
+          </p>
         </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Badge
+          className={
+            online
+              ? 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/30'
+              : 'bg-rose-500/10 text-rose-300 ring-rose-500/30'
+          }
+          dot
+          dotClass={online ? 'bg-emerald-400' : 'bg-rose-400'}
+        >
+          <span className="hidden sm:inline">{online ? 'API Online' : 'API Offline'}</span>
+          <span className="sm:hidden">{online ? 'Online' : 'Offline'}</span>
+        </Badge>
+
+        {meta && (
+          <Badge className={`hidden md:inline-flex ${meta.bg} ${meta.color}`} dot dotClass={meta.dot}>
+            <span className="inline-flex items-center gap-1.5">
+              <Activity size={12} />
+              {meta.label}
+            </span>
+          </Badge>
+        )}
       </div>
     </header>
-  );
+  )
 }
