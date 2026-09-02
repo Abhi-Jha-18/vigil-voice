@@ -358,14 +358,14 @@ def heuristic_score_from_mfcc(mfcc: np.ndarray) -> float:
 def run_phase2_cnn_detection(features: dict, force_verdict: str = None) -> float:
     """
     Runs the trained SimpleCNNDetector using the fixed-length MFCC sequence.
-    Falls back to Phase 1 if the model is not available.
+    Falls back to Phase 1 if the model is not available or invalid.
     Blends a light acoustic prior so out-of-domain clips are less brittle.
     """
     if force_verdict:
         return run_phase1_stub_detection(features, force_verdict)
 
     model, status = _load_cnn_model()
-    if status == "MODEL_UNAVAILABLE" or model is None:
+    if status in ("MODEL_UNAVAILABLE", "MODEL_INTEGRITY_FAILURE") or model is None:
         return run_phase1_stub_detection(features)
 
     try:
@@ -377,6 +377,11 @@ def run_phase2_cnn_detection(features: dict, force_verdict: str = None) -> float
         heuristic_score = run_phase1_stub_detection(features)
         # CNN dominates; heuristic regularizes out-of-domain recordings.
         score = 0.75 * cnn_score + 0.25 * heuristic_score
+
+        return float(np.clip(score, 0.01, 0.99))
+    except Exception as e:
+        print(f"[Detector] Phase 2 inference error: {e} — falling back.")
+        return run_phase1_stub_detection(features)
         return float(np.clip(score, 0.01, 0.99))
     except Exception as e:
         print(f"[Detector] Phase 2 inference error: {e} — falling back.")

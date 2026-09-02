@@ -1,0 +1,18 @@
+{
+  "dataset": "ASVspoof_or_similar",
+  "dataset_type": "REAL",
+  "model_status": "REAL_MODEL",
+  "split": "test",
+  "samples": 4,
+  "accuracy": 1.0,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "roc_auc": 1.0,
+  "eer": 0.0,
+  "far": 0.0,
+  "frr": 0.0,
+  "eer_threshold": 0.9998600482940674,
+  "manifest": "data\\splits\\manifest.csv",
+  "checkpoint": "models\\production\\vigilvoice_cnn_best.pth"
+}

@@ -29,7 +29,11 @@ from backend.detection.detector import (
     get_model_status,
     is_cnn_model_available,
     _load_cnn_model,
+<<<<<<< HEAD
     heuristic_score_from_mfcc,
+=======
+    run_ai_detection,
+>>>>>>> 20153ec (fix(detection): refine Phase 1 acoustic heuristic and Phase 2 CNN live inference, add model metadata and evaluation reports)
 )
 
 logger = logging.getLogger("vigilvoice.live")
@@ -236,7 +240,6 @@ def process_live_window(session: LiveSession, window_audio: np.ndarray) -> dict:
         real_prob = float(np.clip(0.75 * cnn_prob + 0.25 * heur_prob, 0.01, 0.99))
     else:
         real_prob = heuristic_score_from_mfcc(mfcc)
-
     fake_prob = float(1.0 - real_prob)
     risk_score = float(np.clip(fake_prob * 100.0, 0.0, 100.0))
     is_suspicious = fake_prob >= settings.live_suspicious_threshold

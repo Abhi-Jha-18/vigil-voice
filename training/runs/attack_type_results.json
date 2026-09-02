@@ -1,0 +1,12 @@
+{
+  "bona_fide": {
+    "samples": 2,
+    "accuracy": 1.0,
+    "eer": -1.0
+  },
+  "tts": {
+    "samples": 2,
+    "accuracy": 1.0,
+    "eer": 0.0
+  }
+}
