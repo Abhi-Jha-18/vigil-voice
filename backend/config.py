@@ -108,6 +108,19 @@ class Settings:
         }
 
 
+def _resolve_model_path() -> Path:
+    env_path = os.getenv("MODEL_PATH")
+    if env_path:
+        return _resolve_project_path(env_path)
+    primary = PROJECT_ROOT / "models" / "production" / "vigilvoice_cnn_best.pth"
+    if primary.is_file():
+        return primary
+    fallback = PROJECT_ROOT / "models" / "cnn_weight.pth"
+    if fallback.is_file():
+        return fallback
+    return primary
+
+
 def load_settings() -> Settings:
     env = os.getenv("ENVIRONMENT", "development").strip().lower()
     settings = Settings(
@@ -123,7 +136,7 @@ def load_settings() -> Settings:
         max_concurrent_inferences=int(os.getenv("MAX_CONCURRENT_INFERENCES", "10")),
         segment_duration_seconds=float(os.getenv("SEGMENT_DURATION_SECONDS", "4")),
         segment_overlap_seconds=float(os.getenv("SEGMENT_OVERLAP_SECONDS", "1")),
-        model_path=_resolve_project_path(os.getenv("MODEL_PATH", "models/production/vigilvoice_cnn_best.pth")),
+        model_path=_resolve_model_path(),
         model_version=os.getenv("MODEL_VERSION", "v1.0-production"),
         cors_origins=_as_origins(os.getenv("CORS_ORIGINS"), env),
         demo_mode=_as_bool(os.getenv("DEMO_MODE"), env != "production"),

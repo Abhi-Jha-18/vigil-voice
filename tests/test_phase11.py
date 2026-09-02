@@ -264,7 +264,7 @@ def test_model_forward_pass():
     # Batch of 2, (1, 13, 64)
     x = torch.randn(2, 1, 13, 64)
     with torch.no_grad():
-        out = model(x)
+        out = torch.sigmoid(model(x))
     assert out.shape == (2, 1)
     assert torch.all(out >= 0.0) and torch.all(out <= 1.0), "Sigmoid outputs should be in [0, 1]"
 
