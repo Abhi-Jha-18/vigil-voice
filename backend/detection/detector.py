@@ -50,8 +50,7 @@ class SimpleCNNDetector(nn.Module):
             nn.Linear(32 * 8 * 8, 64),
             nn.ReLU(),
             nn.Dropout(0.5),
-            nn.Linear(64, 1),
-            nn.Sigmoid()
+            nn.Linear(64, 1)
         )
 
     def forward(self, x):
@@ -265,7 +264,8 @@ def run_phase2_cnn_detection(features: dict, force_verdict: str = None) -> float
         tensor = torch.from_numpy(mfcc_sequence[np.newaxis, np.newaxis, :, :])
 
         with torch.no_grad():
-            score = model(tensor).item()
+            logits = model(tensor).item()
+            score = torch.sigmoid(torch.tensor(logits)).item()
 
         return float(np.clip(score, 0.01, 0.99))
     except Exception as e:

@@ -116,7 +116,8 @@ def train_model(args):
 
     # 5. Model & Optimizer
     model = SimpleCNNDetector().to(device)
-    criterion = nn.BCELoss(reduction='none')
+    pos_weight = torch.tensor([num_fake / max(1, num_real)], dtype=torch.float32).to(device)
+    criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=3, factor=0.5)
 
@@ -136,8 +137,7 @@ def train_model(args):
             outputs = model(inputs).squeeze(1)
             if outputs.dim() == 0: outputs = outputs.unsqueeze(0)
             
-            sample_weights = torch.where(labels == 1.0, real_weight, fake_weight).to(device)
-            loss = (criterion(outputs, labels) * sample_weights).mean()
+            loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
             train_loss += loss.item() * inputs.size(0)
@@ -155,10 +155,11 @@ def train_model(args):
                 outputs = model(inputs).squeeze(1)
                 if outputs.dim() == 0: outputs = outputs.unsqueeze(0)
                 
-                # Use standard unweighted mean for validation loss tracking
-                val_loss_batch = nn.BCELoss()(outputs, labels)
+                # Use BCEWithLogitsLoss for validation loss tracking
+                val_loss_batch = nn.BCEWithLogitsLoss()(outputs, labels)
                 val_loss += val_loss_batch.item() * inputs.size(0)
-                all_preds.extend(outputs.cpu().numpy())
+                probs = torch.sigmoid(outputs).cpu().numpy()
+                all_preds.extend(probs)
                 all_labels.extend(labels.cpu().numpy())
                 
         val_loss /= len(val_dataset)
@@ -180,6 +181,8 @@ def train_model(args):
             torch.save(model.state_dict(), best_model_path)
             metadata["best_epoch"] = epoch + 1
             metadata["best_metrics"] = metrics
+            metadata["model_status"] = "REAL_MODEL"
+            metadata["label_mapping"] = {"bonafide": 1, "spoof": 0}
             import hashlib
             sha = hashlib.sha256()
             with open(best_model_path, "rb") as f:

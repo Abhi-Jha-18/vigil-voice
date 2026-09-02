@@ -41,7 +41,7 @@ logging.basicConfig(
 logger = logging.getLogger("vigilvoice")
 
 # Static files directory (resolved from project root)
-STATIC_DIR = PROJECT_ROOT / "static"
+STATIC_DIR = PROJECT_ROOT / "frontend" / "dist"
 
 # App startup time (for uptime tracking)
 _start_time = time.time()

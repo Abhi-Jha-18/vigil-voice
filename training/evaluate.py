@@ -66,6 +66,7 @@ def evaluate_model(args):
             inputs, labels = inputs.to(device), labels.to(device)
             outputs = model(inputs).squeeze(1)
             if outputs.dim() == 0: outputs = outputs.unsqueeze(0)
+            outputs = torch.sigmoid(outputs)
             
             all_preds.extend(outputs.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
