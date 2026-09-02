@@ -82,8 +82,22 @@ def train_model(args):
     # 4. Load Datasets
     print(f"Loading training data from {args.manifest}...")
     try:
-        train_dataset = AntiSpoofDataset(args.manifest, split="train", root_dir=Path(project_root))
-        val_dataset = AntiSpoofDataset(args.manifest, split="validation", root_dir=Path(project_root))
+        train_dataset = AntiSpoofDataset(
+            args.manifest,
+            split="train",
+            root_dir=Path(project_root),
+            allow_synthetic=args.allow_synthetic,
+            cache_features=True,
+            augment=True,
+        )
+        val_dataset = AntiSpoofDataset(
+            args.manifest,
+            split="validation",
+            root_dir=Path(project_root),
+            allow_synthetic=args.allow_synthetic,
+            cache_features=True,
+            augment=False,
+        )
     except Exception as e:
         print(f"\n[ERROR] Dataset initialization failed: {e}")
         print("REAL DATASET REQUIRED — TRAINING NOT YET EXECUTED.")
@@ -94,8 +108,8 @@ def train_model(args):
         print("REAL DATASET REQUIRED — TRAINING NOT YET EXECUTED.")
         sys.exit(1)
 
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=0)
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
 
     num_real = sum(1 for r in train_dataset.records if r.label == 1)
     num_fake = sum(1 for r in train_dataset.records if r.label == 0)
@@ -118,7 +132,7 @@ def train_model(args):
     model = SimpleCNNDetector().to(device)
     pos_weight = torch.tensor([num_fake / max(1, num_real)], dtype=torch.float32).to(device)
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
+    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate, weight_decay=1e-4)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=3, factor=0.5)
 
     # 6. Training Loop
@@ -189,7 +203,8 @@ def train_model(args):
                 for chunk in iter(lambda: f.read(65536), b""):
                     sha.update(chunk)
             metadata["model_sha256"] = sha.hexdigest()
-            with open(best_model_path.with_name("vigilvoice_cnn_metadata.json"), "w") as f:
+            meta_path = best_model_path.with_name(best_model_path.stem + "_metadata.json")
+            with open(meta_path, "w") as f:
                 json.dump(metadata, f, indent=2)
         else:
             epochs_no_improve += 1
@@ -206,10 +221,22 @@ def train_model(args):
     with open(run_dir / "history.json", "w") as f:
         json.dump(history, f, indent=2)
         
+    # Publish the best checkpoint to the default inference locations so the
+    # dashboard picks it up without extra env vars.
+    import shutil
+    if best_model_path.is_file():
+        deployed = Path(project_root) / "models" / "cnn_weight.pth"
+        shutil.copy2(best_model_path, deployed)
+        src_meta = best_model_path.with_name(best_model_path.stem + "_metadata.json")
+        if src_meta.is_file():
+            shutil.copy2(src_meta, deployed.with_name(deployed.stem + "_metadata.json"))
+            shutil.copy2(src_meta, best_model_path.with_name("vigilvoice_cnn_metadata.json"))
+
     print("=" * 60)
     print("  REAL TRAINING COMPLETED")
     print(f"  Best Validation Metrics: {metadata.get('best_metrics', {})}")
     print(f"  Model Checkpoint: {best_model_path}")
+    print(f"  Deployed inference weights: {Path(project_root) / 'models' / 'cnn_weight.pth'}")
     print(f"  Run Artifacts: {run_dir}")
     print("=" * 60)
 
@@ -222,6 +249,11 @@ if __name__ == "__main__":
     parser.add_argument("--learning-rate", type=float, default=0.001)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", type=str, default="cuda")
-    
+    parser.add_argument(
+        "--allow-synthetic",
+        action="store_true",
+        help="Allow training on DEMO/synthetic fixtures when a licensed corpus is unavailable.",
+    )
+
     args = parser.parse_args()
     train_model(args)

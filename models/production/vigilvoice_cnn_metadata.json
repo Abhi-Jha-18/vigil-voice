@@ -1,0 +1,47 @@
+{
+  "timestamp": "20260902_134217",
+  "seed": 42,
+  "epochs": 30,
+  "batch_size": 8,
+  "learning_rate": 0.001,
+  "manifest_path": "data/splits/manifest.csv",
+  "preprocessing_config": {
+    "sample_rate": 16000,
+    "channels": 1,
+    "normalization_method": "peak",
+    "min_audio_duration_seconds": 0.25,
+    "max_audio_duration_seconds": 120.0,
+    "min_speech_duration_seconds": 0.25,
+    "vad_top_db": 30,
+    "segment_duration_seconds": 3.0,
+    "segment_overlap_seconds": 1.0,
+    "max_segments": 10,
+    "supported_extensions": [
+      ".wav",
+      ".mp3",
+      ".m4a",
+      ".ogg",
+      ".flac",
+      ".webm",
+      ".aac"
+    ]
+  },
+  "model_architecture": "SimpleCNNDetector",
+  "dataset_identifier": "DEMO_DATA_NOT_FOR_EVALUATION",
+  "best_epoch": 26,
+  "best_metrics": {
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "far": 0.0,
+    "frr": 0.0,
+    "roc_auc": 1.0
+  },
+  "model_status": "REAL_MODEL",
+  "label_mapping": {
+    "bonafide": 1,
+    "spoof": 0
+  },
+  "model_sha256": "11cdae147caf6f0fc1fb6da527d9cf00e512d904c8cc1c78731d6263023b3e52"
+}
