@@ -5,16 +5,15 @@
 
 # ── Stage 1: Build the React frontend ─────────────────────────────────────────
 FROM node:22-slim AS frontend
-WORKDIR /build
+WORKDIR /build/frontend
 
-# Install dependencies first (better layer caching)
-COPY frontend/package.json ./
+# Copy dependency specifications first for better Docker layer caching
+COPY frontend/package*.json ./
 RUN npm install --no-audit --no-fund
 
-# Build the frontend (outputs to /build/../static -> /static via vite config)
-COPY frontend ./frontend
-# vite.config.js builds into ../static relative to the frontend dir
-RUN npm run build --prefix frontend
+# Copy frontend source and build (vite outDir emitting to /build/static)
+COPY frontend ./
+RUN npm run build
 
 # ── Stage 2: Python runtime ───────────────────────────────────────────────────
 FROM python:3.11-slim AS base
@@ -43,7 +42,7 @@ COPY models /app/models
 COPY data /app/data
 
 # Copy the compiled frontend (index.html + assets) served by FastAPI
-COPY --from=frontend /static /app/static
+COPY --from=frontend /build/static /app/static
 
 # Security: Create non-root user and set permissions
 RUN useradd -m -u 1000 appuser && \
