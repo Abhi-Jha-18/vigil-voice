@@ -9,8 +9,6 @@ __pycache__
 .pytest_cache
 .coverage
 htmlcov
-reports/incidents/*
-!reports/robustness_report.json
 *.log
 *.exe
 .env

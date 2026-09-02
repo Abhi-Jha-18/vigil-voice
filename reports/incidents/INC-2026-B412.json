@@ -1,0 +1,101 @@
+{
+  "incident_id": "INC-2026-B412",
+  "session_id": "sess-inc-2026-b412",
+  "created_at": 1788326488.7544146,
+  "duration_seconds": 12.0,
+  "analyzed_windows": 5,
+  "suspicious_windows": 5,
+  "average_spoof_score": 0.82,
+  "peak_spoof_score": 0.91,
+  "risk_level": "HIGH_SPOOF_RISK",
+  "model_status": "REAL_MODEL",
+  "model_sha256": "266f1ca2aaab1c863094a1814dadd52d70f26dbf566a648420ced036ff4c7bba",
+  "timeline": [
+    {
+      "window_id": 0,
+      "start_time": 0.0,
+      "end_time": 2.4,
+      "fake_probability": 0.88,
+      "real_probability": 0.12,
+      "risk_score": 88.0,
+      "risk_level": "HIGH_SPOOF_RISK",
+      "status": "ANALYZED",
+      "confidence": 88.0,
+      "is_suspicious": true
+    },
+    {
+      "window_id": 1,
+      "start_time": 2.4,
+      "end_time": 4.8,
+      "fake_probability": 0.84,
+      "real_probability": 0.16,
+      "risk_score": 84.0,
+      "risk_level": "HIGH_SPOOF_RISK",
+      "status": "ANALYZED",
+      "confidence": 84.0,
+      "is_suspicious": true
+    },
+    {
+      "window_id": 2,
+      "start_time": 4.8,
+      "end_time": 7.2,
+      "fake_probability": 0.87,
+      "real_probability": 0.13,
+      "risk_score": 87.0,
+      "risk_level": "HIGH_SPOOF_RISK",
+      "status": "ANALYZED",
+      "confidence": 87.0,
+      "is_suspicious": true
+    },
+    {
+      "window_id": 3,
+      "start_time": 7.2,
+      "end_time": 9.6,
+      "fake_probability": 0.73,
+      "real_probability": 0.27,
+      "risk_score": 73.0,
+      "risk_level": "SUSPICIOUS",
+      "status": "ANALYZED",
+      "confidence": 73.0,
+      "is_suspicious": true
+    },
+    {
+      "window_id": 4,
+      "start_time": 9.6,
+      "end_time": 12.0,
+      "fake_probability": 0.78,
+      "real_probability": 0.22,
+      "risk_score": 78.0,
+      "risk_level": "HIGH_SPOOF_RISK",
+      "status": "ANALYZED",
+      "confidence": 78.0,
+      "is_suspicious": true
+    }
+  ],
+  "social_engineering_indicators": [
+    "CREDENTIAL_REQUEST",
+    "IMPERSONATION"
+  ],
+  "disclaimer": "Detection is probabilistic and indicates acoustic anomalies associated with synthetic speech. VigilVoice does not make legal accusations or automatically file reports.",
+  "official_reporting_resources": {
+    "national_cyber_crime_portal": {
+      "name": "National Cyber Crime Reporting Portal",
+      "url": "https://www.cybercrime.gov.in/",
+      "purpose": "Official Government of India portal to report cybercrime incidents and financial fraud."
+    },
+    "i4c_ncrp_suspect_report": {
+      "name": "I4C / NCRP Report Suspect Identifier",
+      "url": "https://www.cybercrime.gov.in/Webform/cyber_suspect.aspx",
+      "purpose": "Report suspicious identifiers such as phone numbers, emails, bank accounts, or websites."
+    },
+    "sanchar_saathi_chakshu": {
+      "name": "Sanchar Saathi \u2014 Chakshu Portal",
+      "url": "https://sancharsaathi.gov.in/",
+      "purpose": "Report suspected fraudulent communication received via call, SMS, or WhatsApp."
+    },
+    "cyber_crime_helpline": {
+      "number": "1930",
+      "description": "For immediate cyber/financial fraud assistance, contact the national cybercrime helpline at 1930."
+    }
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "status": "COMPLETED",
+  "timestamp": "2026-09-01T13:51:50",
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python_version": "3.11.9",
+    "torch_version": "2.5.1+cpu",
+    "device": "cpu",
+    "model_status": "HEURISTIC_ONLY",
+    "sample_rate_hz": 16000
+  },
+  "model_loading": {
+    "load_time_ms": 11.189400000148453
+  },
+  "benchmarks": {
+    "iterations": 15,
+    "preprocessing": {
+      "mean_ms": 463.95590000017063,
+      "median_ms": 7.732400001259521,
+      "p95_ms": 2062.9554000004573,
+      "min_ms": 5.589500000496628,
+      "max_ms": 6851.005800001076,
+      "std_ms": 1707.0116896991224
+    },
+    "feature_extraction": {
+      "mean_ms": 38.99853333362747,
+      "median_ms": 39.876499999081716,
+      "p95_ms": 45.79317000097944,
+      "min_ms": 27.20979999867268,
+      "max_ms": 48.21720000109053,
+      "std_ms": 5.399077303019085
+    },
+    "model_inference": {
+      "mean_ms": 1.6417733330551225,
+      "median_ms": 1.5015999997558538,
+      "p95_ms": 2.622510000583132,
+      "min_ms": 1.0724999992817175,
+      "max_ms": 3.8122999994811835,
+      "std_ms": 0.642928365677353
+    },
+    "total_pipeline": {
+      "mean_ms": 504.6352666664461,
+      "median_ms": 50.89320000115549,
+      "p95_ms": 2106.0871500005233,
+      "min_ms": 39.303300000028685,
+      "max_ms": 6882.081100000505,
+      "std_ms": 1704.4523624626859
+    }
+  },
+  "memory_profile_kb": {
+    "baseline_kb": 0.0,
+    "peak_inference_kb": 74212.189453125,
+    "net_allocated_kb": 71768.041015625
+  }
+}

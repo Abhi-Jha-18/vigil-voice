@@ -1,0 +1,132 @@
+[
+  {
+    "sample_idx": 2,
+    "filepath": "data/raw/fake_tts04_01.wav",
+    "speaker_id": "spk04",
+    "attack_type": "tts",
+    "true_label": "SPOOF",
+    "condition": "noise_20db",
+    "clean_score": -18.69959259033203,
+    "transformed_score": 0.5633371472358704
+  },
+  {
+    "sample_idx": 3,
+    "filepath": "data/raw/fake_tts04_02.wav",
+    "speaker_id": "spk04",
+    "attack_type": "tts",
+    "true_label": "SPOOF",
+    "condition": "noise_20db",
+    "clean_score": -10.558341979980469,
+    "transformed_score": 1.0735127925872803
+  },
+  {
+    "sample_idx": 2,
+    "filepath": "data/raw/fake_tts04_01.wav",
+    "speaker_id": "spk04",
+    "attack_type": "tts",
+    "true_label": "SPOOF",
+    "condition": "noise_10db",
+    "clean_score": -18.69959259033203,
+    "transformed_score": 1.2282650470733643
+  },
+  {
+    "sample_idx": 3,
+    "filepath": "data/raw/fake_tts04_02.wav",
+    "speaker_id": "spk04",
+    "attack_type": "tts",
+    "true_label": "SPOOF",
+    "condition": "noise_10db",
+    "clean_score": -10.558341979980469,
+    "transformed_score": 1.322688102722168
+  },
+  {
+    "sample_idx": 2,
+    "filepath": "data/raw/fake_tts04_01.wav",
+    "speaker_id": "spk04",
+    "attack_type": "tts",
+    "true_label": "SPOOF",
+    "condition": "noise_5db",
+    "clean_score": -18.69959259033203,
+    "transformed_score": 1.2706551551818848
+  },
+  {
+    "sample_idx": 3,
+    "filepath": "data/raw/fake_tts04_02.wav",
+    "speaker_id": "spk04",
+    "attack_type": "tts",
+    "true_label": "SPOOF",
+    "condition": "noise_5db",
+    "clean_score": -10.558341979980469,
+    "transformed_score": 1.2877323627471924
+  },
+  {
+    "sample_idx": 2,
+    "filepath": "data/raw/fake_tts04_01.wav",
+    "speaker_id": "spk04",
+    "attack_type": "tts",
+    "true_label": "SPOOF",
+    "condition": "noise_0db",
+    "clean_score": -18.69959259033203,
+    "transformed_score": 1.3887944221496582
+  },
+  {
+    "sample_idx": 3,
+    "filepath": "data/raw/fake_tts04_02.wav",
+    "speaker_id": "spk04",
+    "attack_type": "tts",
+    "true_label": "SPOOF",
+    "condition": "noise_0db",
+    "clean_score": -10.558341979980469,
+    "transformed_score": 1.5009372234344482
+  },
+  {
+    "sample_idx": 3,
+    "filepath": "data/raw/fake_tts04_02.wav",
+    "speaker_id": "spk04",
+    "attack_type": "tts",
+    "true_label": "SPOOF",
+    "condition": "volume_+6db",
+    "clean_score": -10.558341979980469,
+    "transformed_score": 1.9715721607208252
+  },
+  {
+    "sample_idx": 2,
+    "filepath": "data/raw/fake_tts04_01.wav",
+    "speaker_id": "spk04",
+    "attack_type": "tts",
+    "true_label": "SPOOF",
+    "condition": "combined_noise_volume",
+    "clean_score": -18.69959259033203,
+    "transformed_score": 0.6252878308296204
+  },
+  {
+    "sample_idx": 3,
+    "filepath": "data/raw/fake_tts04_02.wav",
+    "speaker_id": "spk04",
+    "attack_type": "tts",
+    "true_label": "SPOOF",
+    "condition": "combined_noise_volume",
+    "clean_score": -10.558341979980469,
+    "transformed_score": 0.7783303260803223
+  },
+  {
+    "sample_idx": 2,
+    "filepath": "data/raw/fake_tts04_01.wav",
+    "speaker_id": "spk04",
+    "attack_type": "tts",
+    "true_label": "SPOOF",
+    "condition": "combined_resample_noise",
+    "clean_score": -18.69959259033203,
+    "transformed_score": 1.228351354598999
+  },
+  {
+    "sample_idx": 3,
+    "filepath": "data/raw/fake_tts04_02.wav",
+    "speaker_id": "spk04",
+    "attack_type": "tts",
+    "true_label": "SPOOF",
+    "condition": "combined_resample_noise",
+    "clean_score": -10.558341979980469,
+    "transformed_score": 1.3222830295562744
+  }
+]

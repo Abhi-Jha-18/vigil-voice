@@ -1,0 +1,113 @@
+{
+  "incident_id": "INC-2026-K992",
+  "session_id": "sess-inc-2026-k992",
+  "created_at": 1787825368.7544146,
+  "duration_seconds": 16.0,
+  "analyzed_windows": 6,
+  "suspicious_windows": 6,
+  "average_spoof_score": 0.84,
+  "peak_spoof_score": 0.9,
+  "risk_level": "HIGH_SPOOF_RISK",
+  "model_status": "REAL_MODEL",
+  "model_sha256": "266f1ca2aaab1c863094a1814dadd52d70f26dbf566a648420ced036ff4c7bba",
+  "timeline": [
+    {
+      "window_id": 0,
+      "start_time": 0.0,
+      "end_time": 2.7,
+      "fake_probability": 0.79,
+      "real_probability": 0.21,
+      "risk_score": 79.0,
+      "risk_level": "HIGH_SPOOF_RISK",
+      "status": "ANALYZED",
+      "confidence": 79.0,
+      "is_suspicious": true
+    },
+    {
+      "window_id": 1,
+      "start_time": 2.7,
+      "end_time": 5.3,
+      "fake_probability": 0.83,
+      "real_probability": 0.17,
+      "risk_score": 83.0,
+      "risk_level": "HIGH_SPOOF_RISK",
+      "status": "ANALYZED",
+      "confidence": 83.0,
+      "is_suspicious": true
+    },
+    {
+      "window_id": 2,
+      "start_time": 5.3,
+      "end_time": 8.0,
+      "fake_probability": 0.78,
+      "real_probability": 0.22,
+      "risk_score": 78.0,
+      "risk_level": "HIGH_SPOOF_RISK",
+      "status": "ANALYZED",
+      "confidence": 78.0,
+      "is_suspicious": true
+    },
+    {
+      "window_id": 3,
+      "start_time": 8.0,
+      "end_time": 10.7,
+      "fake_probability": 0.75,
+      "real_probability": 0.25,
+      "risk_score": 75.0,
+      "risk_level": "HIGH_SPOOF_RISK",
+      "status": "ANALYZED",
+      "confidence": 75.0,
+      "is_suspicious": true
+    },
+    {
+      "window_id": 4,
+      "start_time": 10.7,
+      "end_time": 13.3,
+      "fake_probability": 0.79,
+      "real_probability": 0.21,
+      "risk_score": 79.0,
+      "risk_level": "HIGH_SPOOF_RISK",
+      "status": "ANALYZED",
+      "confidence": 79.0,
+      "is_suspicious": true
+    },
+    {
+      "window_id": 5,
+      "start_time": 13.3,
+      "end_time": 16.0,
+      "fake_probability": 0.86,
+      "real_probability": 0.14,
+      "risk_score": 86.0,
+      "risk_level": "HIGH_SPOOF_RISK",
+      "status": "ANALYZED",
+      "confidence": 86.0,
+      "is_suspicious": true
+    }
+  ],
+  "social_engineering_indicators": [
+    "CREDENTIAL_REQUEST",
+    "FINANCIAL_REQUEST"
+  ],
+  "disclaimer": "Detection is probabilistic and indicates acoustic anomalies associated with synthetic speech. VigilVoice does not make legal accusations or automatically file reports.",
+  "official_reporting_resources": {
+    "national_cyber_crime_portal": {
+      "name": "National Cyber Crime Reporting Portal",
+      "url": "https://www.cybercrime.gov.in/",
+      "purpose": "Official Government of India portal to report cybercrime incidents and financial fraud."
+    },
+    "i4c_ncrp_suspect_report": {
+      "name": "I4C / NCRP Report Suspect Identifier",
+      "url": "https://www.cybercrime.gov.in/Webform/cyber_suspect.aspx",
+      "purpose": "Report suspicious identifiers such as phone numbers, emails, bank accounts, or websites."
+    },
+    "sanchar_saathi_chakshu": {
+      "name": "Sanchar Saathi \u2014 Chakshu Portal",
+      "url": "https://sancharsaathi.gov.in/",
+      "purpose": "Report suspected fraudulent communication received via call, SMS, or WhatsApp."
+    },
+    "cyber_crime_helpline": {
+      "number": "1930",
+      "description": "For immediate cyber/financial fraud assistance, contact the national cybercrime helpline at 1930."
+    }
+  }
+}

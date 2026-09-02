@@ -1,0 +1,30 @@
+{
+  "samples": 20,
+  "labels": {
+    "genuine": 10,
+    "spoof": 10
+  },
+  "speakers": 5,
+  "dataset_sources": {
+    "DEMO_DATA_NOT_FOR_EVALUATION": 20
+  },
+  "attack_types": {
+    "bona_fide": 10,
+    "tts": 10
+  },
+  "generator_ids": {
+    "demo_tone_generator": 10,
+    "none": 10
+  },
+  "languages": {
+    "en": 20
+  },
+  "channels": {
+    "synthetic": 20
+  },
+  "splits": {
+    "test": 4,
+    "train": 12,
+    "validation": 4
+  }
+}

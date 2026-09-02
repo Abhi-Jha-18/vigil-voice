@@ -1,0 +1,148 @@
+{
+  "incident_id": "INC-2026-L404",
+  "session_id": "sess-inc-2026-l404",
+  "created_at": 1787773528.7544146,
+  "duration_seconds": 22.5,
+  "analyzed_windows": 9,
+  "suspicious_windows": 7,
+  "average_spoof_score": 0.52,
+  "peak_spoof_score": 0.65,
+  "risk_level": "SUSPICIOUS",
+  "model_status": "REAL_MODEL",
+  "model_sha256": "266f1ca2aaab1c863094a1814dadd52d70f26dbf566a648420ced036ff4c7bba",
+  "timeline": [
+    {
+      "window_id": 0,
+      "start_time": 0.0,
+      "end_time": 2.5,
+      "fake_probability": 0.62,
+      "real_probability": 0.38,
+      "risk_score": 62.0,
+      "risk_level": "SUSPICIOUS",
+      "status": "ANALYZED",
+      "confidence": 62.0,
+      "is_suspicious": true
+    },
+    {
+      "window_id": 1,
+      "start_time": 2.5,
+      "end_time": 5.0,
+      "fake_probability": 0.45,
+      "real_probability": 0.55,
+      "risk_score": 45.0,
+      "risk_level": "SUSPICIOUS",
+      "status": "ANALYZED",
+      "confidence": 55.0,
+      "is_suspicious": false
+    },
+    {
+      "window_id": 2,
+      "start_time": 5.0,
+      "end_time": 7.5,
+      "fake_probability": 0.65,
+      "real_probability": 0.35,
+      "risk_score": 65.0,
+      "risk_level": "SUSPICIOUS",
+      "status": "ANALYZED",
+      "confidence": 65.0,
+      "is_suspicious": true
+    },
+    {
+      "window_id": 3,
+      "start_time": 7.5,
+      "end_time": 10.0,
+      "fake_probability": 0.64,
+      "real_probability": 0.36,
+      "risk_score": 64.0,
+      "risk_level": "SUSPICIOUS",
+      "status": "ANALYZED",
+      "confidence": 64.0,
+      "is_suspicious": true
+    },
+    {
+      "window_id": 4,
+      "start_time": 10.0,
+      "end_time": 12.5,
+      "fake_probability": 0.5,
+      "real_probability": 0.5,
+      "risk_score": 50.0,
+      "risk_level": "SUSPICIOUS",
+      "status": "ANALYZED",
+      "confidence": 50.0,
+      "is_suspicious": true
+    },
+    {
+      "window_id": 5,
+      "start_time": 12.5,
+      "end_time": 15.0,
+      "fake_probability": 0.57,
+      "real_probability": 0.43,
+      "risk_score": 57.0,
+      "risk_level": "SUSPICIOUS",
+      "status": "ANALYZED",
+      "confidence": 57.0,
+      "is_suspicious": true
+    },
+    {
+      "window_id": 6,
+      "start_time": 15.0,
+      "end_time": 17.5,
+      "fake_probability": 0.55,
+      "real_probability": 0.45,
+      "risk_score": 55.0,
+      "risk_level": "SUSPICIOUS",
+      "status": "ANALYZED",
+      "confidence": 55.0,
+      "is_suspicious": true
+    },
+    {
+      "window_id": 7,
+      "start_time": 17.5,
+      "end_time": 20.0,
+      "fake_probability": 0.62,
+      "real_probability": 0.38,
+      "risk_score": 62.0,
+      "risk_level": "SUSPICIOUS",
+      "status": "ANALYZED",
+      "confidence": 62.0,
+      "is_suspicious": true
+    },
+    {
+      "window_id": 8,
+      "start_time": 20.0,
+      "end_time": 22.5,
+      "fake_probability": 0.45,
+      "real_probability": 0.55,
+      "risk_score": 45.0,
+      "risk_level": "SUSPICIOUS",
+      "status": "ANALYZED",
+      "confidence": 55.0,
+      "is_suspicious": false
+    }
+  ],
+  "social_engineering_indicators": [
+    "IMPERSONATION"
+  ],
+  "disclaimer": "Detection is probabilistic and indicates acoustic anomalies associated with synthetic speech. VigilVoice does not make legal accusations or automatically file reports.",
+  "official_reporting_resources": {
+    "national_cyber_crime_portal": {
+      "name": "National Cyber Crime Reporting Portal",
+      "url": "https://www.cybercrime.gov.in/",
+      "purpose": "Official Government of India portal to report cybercrime incidents and financial fraud."
+    },
+    "i4c_ncrp_suspect_report": {
+      "name": "I4C / NCRP Report Suspect Identifier",
+      "url": "https://www.cybercrime.gov.in/Webform/cyber_suspect.aspx",
+      "purpose": "Report suspicious identifiers such as phone numbers, emails, bank accounts, or websites."
+    },
+    "sanchar_saathi_chakshu": {
+      "name": "Sanchar Saathi \u2014 Chakshu Portal",
+      "url": "https://sancharsaathi.gov.in/",
+      "purpose": "Report suspected fraudulent communication received via call, SMS, or WhatsApp."
+    },
+    "cyber_crime_helpline": {
+      "number": "1930",
+      "description": "For immediate cyber/financial fraud assistance, contact the national cybercrime helpline at 1930."
+    }
+  }
+}

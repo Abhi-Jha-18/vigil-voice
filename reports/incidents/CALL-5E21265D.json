@@ -1,0 +1,37 @@
+{
+  "incident_id": "CALL-5E21265D",
+  "session_id": "4103fdcefff340bf81b35f54dafff240",
+  "created_at": 1788359478.7554042,
+  "duration_seconds": 0.0,
+  "analyzed_windows": 0,
+  "suspicious_windows": 0,
+  "average_spoof_score": 0.0,
+  "peak_spoof_score": 0.0,
+  "risk_level": "LOW_RISK",
+  "model_status": "REAL_MODEL",
+  "model_sha256": "11cdae147caf6f0fc1fb6da527d9cf00e512d904c8cc1c78731d6263023b3e52",
+  "timeline": [],
+  "social_engineering_indicators": [],
+  "disclaimer": "Detection is probabilistic and indicates acoustic anomalies associated with synthetic speech. VigilVoice does not make legal accusations or automatically file reports.",
+  "official_reporting_resources": {
+    "national_cyber_crime_portal": {
+      "name": "National Cyber Crime Reporting Portal",
+      "url": "https://www.cybercrime.gov.in/",
+      "purpose": "Official Government of India portal to report cybercrime incidents and financial fraud."
+    },
+    "i4c_ncrp_suspect_report": {
+      "name": "I4C / NCRP Report Suspect Identifier",
+      "url": "https://www.cybercrime.gov.in/Webform/cyber_suspect.aspx",
+      "purpose": "Report suspicious identifiers such as phone numbers, emails, bank accounts, or websites."
+    },
+    "sanchar_saathi_chakshu": {
+      "name": "Sanchar Saathi \u2014 Chakshu Portal",
+      "url": "https://sancharsaathi.gov.in/",
+      "purpose": "Report suspected fraudulent communication received via call, SMS, or WhatsApp."
+    },
+    "cyber_crime_helpline": {
+      "number": "1930",
+      "description": "For immediate cyber/financial fraud assistance, contact the national cybercrime helpline at 1930."
+    }
+  }
+}

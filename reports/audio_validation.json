@@ -1,0 +1,128 @@
+{
+  "valid": false,
+  "record_count": 20,
+  "error_count": 20,
+  "warning_count": 0,
+  "issues": [
+    {
+      "severity": "error",
+      "code": "missing_file",
+      "filepath": "data/raw/real_spk01_01.wav",
+      "message": "audio file does not exist"
+    },
+    {
+      "severity": "error",
+      "code": "missing_file",
+      "filepath": "data/raw/real_spk01_02.wav",
+      "message": "audio file does not exist"
+    },
+    {
+      "severity": "error",
+      "code": "missing_file",
+      "filepath": "data/raw/real_spk02_01.wav",
+      "message": "audio file does not exist"
+    },
+    {
+      "severity": "error",
+      "code": "missing_file",
+      "filepath": "data/raw/real_spk02_02.wav",
+      "message": "audio file does not exist"
+    },
+    {
+      "severity": "error",
+      "code": "missing_file",
+      "filepath": "data/raw/real_spk03_01.wav",
+      "message": "audio file does not exist"
+    },
+    {
+      "severity": "error",
+      "code": "missing_file",
+      "filepath": "data/raw/real_spk03_02.wav",
+      "message": "audio file does not exist"
+    },
+    {
+      "severity": "error",
+      "code": "missing_file",
+      "filepath": "data/raw/real_spk04_01.wav",
+      "message": "audio file does not exist"
+    },
+    {
+      "severity": "error",
+      "code": "missing_file",
+      "filepath": "data/raw/real_spk04_02.wav",
+      "message": "audio file does not exist"
+    },
+    {
+      "severity": "error",
+      "code": "missing_file",
+      "filepath": "data/raw/real_spk05_01.wav",
+      "message": "audio file does not exist"
+    },
+    {
+      "severity": "error",
+      "code": "missing_file",
+      "filepath": "data/raw/real_spk05_02.wav",
+      "message": "audio file does not exist"
+    },
+    {
+      "severity": "error",
+      "code": "missing_file",
+      "filepath": "data/raw/fake_tts01_01.wav",
+      "message": "audio file does not exist"
+    },
+    {
+      "severity": "error",
+      "code": "missing_file",
+      "filepath": "data/raw/fake_tts01_02.wav",
+      "message": "audio file does not exist"
+    },
+    {
+      "severity": "error",
+      "code": "missing_file",
+      "filepath": "data/raw/fake_tts02_01.wav",
+      "message": "audio file does not exist"
+    },
+    {
+      "severity": "error",
+      "code": "missing_file",
+      "filepath": "data/raw/fake_tts02_02.wav",
+      "message": "audio file does not exist"
+    },
+    {
+      "severity": "error",
+      "code": "missing_file",
+      "filepath": "data/raw/fake_tts03_01.wav",
+      "message": "audio file does not exist"
+    },
+    {
+      "severity": "error",
+      "code": "missing_file",
+      "filepath": "data/raw/fake_tts03_02.wav",
+      "message": "audio file does not exist"
+    },
+    {
+      "severity": "error",
+      "code": "missing_file",
+      "filepath": "data/raw/fake_tts04_01.wav",
+      "message": "audio file does not exist"
+    },
+    {
+      "severity": "error",
+      "code": "missing_file",
+      "filepath": "data/raw/fake_tts04_02.wav",
+      "message": "audio file does not exist"
+    },
+    {
+      "severity": "error",
+      "code": "missing_file",
+      "filepath": "data/raw/fake_tts05_01.wav",
+      "message": "audio file does not exist"
+    },
+    {
+      "severity": "error",
+      "code": "missing_file",
+      "filepath": "data/raw/fake_tts05_02.wav",
+      "message": "audio file does not exist"
+    }
+  ]
+}
