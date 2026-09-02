@@ -95,6 +95,20 @@ export default function UploadAnalysis({ model }) {
     if (inputRef.current) inputRef.current.value = ''
   }
 
+  const loadSampleAudio = async (url, name) => {
+    try {
+      setBusy(true)
+      const res = await fetch(url)
+      const blob = await res.blob()
+      const sampleFile = new File([blob], name, { type: 'audio/wav' })
+      pickFile(sampleFile)
+    } catch (err) {
+      setError({ message: 'Failed to load sample audio clip: ' + err.message })
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <PageContainer>
       <PageHeader
@@ -106,41 +120,63 @@ export default function UploadAnalysis({ model }) {
         {/* Left: upload + config */}
         <div className="space-y-5 lg:col-span-2">
           {!file ? (
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => inputRef.current?.click()}
-              onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.click()}
-              onDragOver={(e) => {
-                e.preventDefault()
-                setDragging(true)
-              }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={onDrop}
-              className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-14 text-center transition ${
-                dragging
-                  ? 'border-cyan-400/70 bg-cyan-500/5'
-                  : 'border-line bg-ink-900/50 hover:border-line-strong'
-              }`}
-            >
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-cyan-500/10 text-cyan-300">
-                <UploadCloud size={26} />
+            <div className="space-y-3">
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => inputRef.current?.click()}
+                onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.click()}
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  setDragging(true)
+                }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={onDrop}
+                className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-12 text-center transition ${
+                  dragging
+                    ? 'border-cyan-400/70 bg-cyan-500/5'
+                    : 'border-line bg-ink-900/50 hover:border-line-strong'
+                }`}
+              >
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-cyan-500/10 text-cyan-300">
+                  <UploadCloud size={26} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-200">
+                    Drag &amp; drop an audio file, or <span className="text-cyan-300 underline">browse</span>
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    WAV · MP3 · M4A · MP4 · OGG · FLAC — up to {maxMb}MB
+                  </p>
+                </div>
+                <input
+                  ref={inputRef}
+                  type="file"
+                  accept={ACCEPT}
+                  className="hidden"
+                  onChange={(e) => pickFile(e.target.files?.[0])}
+                />
               </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-200">
-                  Drag &amp; drop an audio file, or <span className="text-cyan-300 underline">browse</span>
-                </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  WAV · MP3 · M4A · MP4 · OGG · FLAC — up to {maxMb}MB
-                </p>
+
+              <div className="panel-soft space-y-2 p-3.5">
+                <span className="eyebrow block">Or try pre-loaded demo voice samples:</span>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => loadSampleAudio('/samples/real_spk01_01.wav', 'real_human_speech_sample.wav')}
+                    className="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/20"
+                  >
+                    <span>🔊</span> Authentic Human Sample
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => loadSampleAudio('/samples/fake_tts01_01.wav', 'synthetic_deepfake_sample.wav')}
+                    className="flex items-center gap-1.5 rounded-lg bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-300 transition hover:bg-rose-500/20"
+                  >
+                    <span>⚠️</span> AI Deepfake Sample
+                  </button>
+                </div>
               </div>
-              <input
-                ref={inputRef}
-                type="file"
-                accept={ACCEPT}
-                className="hidden"
-                onChange={(e) => pickFile(e.target.files?.[0])}
-              />
             </div>
           ) : (
             <div className="panel-soft flex items-center gap-3 p-4">

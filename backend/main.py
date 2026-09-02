@@ -17,6 +17,11 @@ import uuid
 from typing import Optional
 from pathlib import Path
 
+# Enable direct script execution: python backend/main.py
+_root = Path(__file__).resolve().parent.parent
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
+
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -596,3 +601,9 @@ async def spa_fallback(full_path: str):
         status_code=404,
         content={"success": False, "error": {"code": "NOT_FOUND", "message": "Frontend build not deployed."}},
     )
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("backend.main:app", host="127.0.0.1", port=8000, reload=True)
+
