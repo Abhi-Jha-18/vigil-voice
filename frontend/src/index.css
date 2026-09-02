@@ -1,0 +1,116 @@
+/* Self-hosted fonts (CSP-friendly — same origin, no external requests).
+   @import rules must come before all other statements. */
+@import '@fontsource-variable/inter';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+@import '@fontsource/jetbrains-mono/600.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-ink-950 text-slate-200 font-sans antialiased;
+  background-image:
+    radial-gradient(60rem 40rem at 80% -10%, rgba(34, 211, 238, 0.07), transparent 60%),
+    radial-gradient(50rem 36rem at -10% 10%, rgba(99, 102, 241, 0.06), transparent 55%);
+  background-attachment: fixed;
+}
+
+/* Subtle engineering grid texture */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.035) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(circle at 50% 0%, black, transparent 80%);
+}
+
+@layer components {
+  .panel {
+    @apply rounded-xl2 border border-line bg-ink-900/70 backdrop-blur-xl shadow-panel;
+  }
+  .panel-soft {
+    @apply rounded-xl border border-line bg-ink-850/60;
+  }
+  .input-base {
+    @apply w-full rounded-lg border border-line bg-ink-950/60 px-3 py-2.5 text-sm text-slate-100
+      outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20 placeholder:text-slate-500;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold
+      transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50
+      disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .btn-primary {
+    @apply btn bg-gradient-to-br from-cyan-400 to-blue-600 text-ink-950 hover:brightness-110 active:scale-[0.98];
+  }
+  .btn-ghost {
+    @apply btn border border-line bg-white/5 text-slate-200 hover:border-line-strong hover:bg-white/10;
+  }
+  .btn-ok {
+    @apply btn bg-gradient-to-br from-emerald-400 to-emerald-600 text-ink-950 hover:brightness-110 active:scale-[0.98];
+  }
+  .btn-bad {
+    @apply btn bg-gradient-to-br from-rose-400 to-rose-600 text-white hover:brightness-110 active:scale-[0.98];
+  }
+  .eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500;
+  }
+  .nav-link {
+    @apply flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-400
+      transition hover:bg-white/5 hover:text-slate-100;
+  }
+  .nav-link-active {
+    @apply bg-accent/10 text-accent-soft ring-1 ring-inset ring-accent/25;
+  }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.18);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.32);
+  background-clip: content-box;
+}
+
+/* Route transition */
+.route-enter {
+  animation: fade-up 0.35s ease-out both;
+}
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

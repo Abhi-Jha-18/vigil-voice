@@ -1,7 +1,23 @@
-# VigilVoice — Production Container Image (Phase 14)
-# Multi-stage / lightweight Python 3.11 build for secure CPU execution
+# VigilVoice — Production Container Image
+# Multi-stage build: React/Vite frontend build -> FastAPI runtime.
+# The compiled frontend is emitted into /app/static and served by FastAPI,
+# so the existing single-container deployment (and /api/* contracts) are preserved.
 
-FROM python:3.11-slim as base
+# ── Stage 1: Build the React frontend ─────────────────────────────────────────
+FROM node:22-slim AS frontend
+WORKDIR /build
+
+# Install dependencies first (better layer caching)
+COPY frontend/package.json ./
+RUN npm install --no-audit --no-fund
+
+# Build the frontend (outputs to /build/../static -> /static via vite config)
+COPY frontend ./frontend
+# vite.config.js builds into ../static relative to the frontend dir
+RUN npm run build --prefix frontend
+
+# ── Stage 2: Python runtime ───────────────────────────────────────────────────
+FROM python:3.11-slim AS base
 
 # Prevent Python from writing .pyc files and enable unbuffered output
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -23,18 +39,21 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 # Copy application source
 COPY backend /app/backend
-COPY static /app/static
 COPY models /app/models
 COPY data /app/data
 
+# Copy the compiled frontend (index.html + assets) served by FastAPI
+COPY --from=frontend /static /app/static
+
 # Security: Create non-root user and set permissions
 RUN useradd -m -u 1000 appuser && \
+    mkdir -p /app/reports/incidents && \
     chown -R appuser:appuser /app
 
 USER appuser
 
 # Healthcheck configuration
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')" || exit 1
 
 EXPOSE 8000
