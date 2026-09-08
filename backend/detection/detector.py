@@ -382,10 +382,6 @@ def run_phase2_cnn_detection(features: dict, force_verdict: str = None) -> float
     except Exception as e:
         print(f"[Detector] Phase 2 inference error: {e} — falling back.")
         return run_phase1_stub_detection(features)
-        return float(np.clip(score, 0.01, 0.99))
-    except Exception as e:
-        print(f"[Detector] Phase 2 inference error: {e} — falling back.")
-        return run_phase1_stub_detection(features)
 
 
 # ── Main Interface ─────────────────────────────────────────────────────────────

@@ -59,7 +59,7 @@ def evaluate_model(args):
 
     # 2. Load Model
     model = SimpleCNNDetector().to(device)
-    model.load_state_dict(torch.load(args.checkpoint, map_location=device))
+    model.load_state_dict(torch.load(args.checkpoint, map_location=device, weights_only=True))
     model.eval()
 
     # 3. Evaluate
