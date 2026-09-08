@@ -31,6 +31,7 @@ from backend.detection.detector import (
     _load_cnn_model,
     heuristic_score_from_mfcc,
     run_ai_detection,
+    blend_cnn_and_heuristic,
 )
 
 logger = logging.getLogger("vigilvoice.live")
@@ -234,7 +235,7 @@ def process_live_window(session: LiveSession, window_audio: np.ndarray) -> dict:
             logit = model(inp_tensor).reshape(-1)[0]
             cnn_prob = float(torch.sigmoid(logit).cpu())
         heur_prob = heuristic_score_from_mfcc(mfcc)
-        real_prob = float(np.clip(0.75 * cnn_prob + 0.25 * heur_prob, 0.01, 0.99))
+        real_prob = float(blend_cnn_and_heuristic(cnn_prob, heur_prob))
     else:
         real_prob = heuristic_score_from_mfcc(mfcc)
     fake_prob = float(1.0 - real_prob)

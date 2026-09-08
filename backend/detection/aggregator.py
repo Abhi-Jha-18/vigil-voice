@@ -96,6 +96,15 @@ def aggregate_predictions(
         overall_fake_prob = max_fake_prob
     elif strategy == "average":
         overall_fake_prob = avg_fake_prob
+    elif strategy in ("robust_risk", "hybrid"):
+        # Single-spike false alarm protection:
+        # If there is only 1 isolated spike in a clip with >= 3 segments and the average fake probability
+        # across all segments is low (<0.35), do not allow an isolated anomaly to dictate 90%+ fake confidence.
+        if len(segments) >= 3 and len(suspicious_segments) <= 1 and avg_fake_prob < 0.35:
+            # Weighted blend of average (60%) and peak (40%) to temper the false alarm
+            overall_fake_prob = float(np.clip(0.60 * avg_fake_prob + 0.40 * max_fake_prob, 0.0, 1.0))
+        else:
+            overall_fake_prob = max_fake_prob
     else:
         # Default to max_risk for security
         overall_fake_prob = max_fake_prob

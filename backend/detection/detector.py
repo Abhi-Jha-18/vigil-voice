@@ -353,6 +353,38 @@ def heuristic_score_from_mfcc(mfcc: np.ndarray) -> float:
     )
 
 
+def blend_cnn_and_heuristic(cnn_prob, heur_prob):
+    """
+    Blends CNN neural prediction and acoustic physical heuristic score.
+
+    Includes conflict-aware calibration:
+    When CNN claims spoof (<=0.35) while acoustic heuristics strongly indicate
+    authentic human speech (>=0.65) with high cepstral dynamics and natural formant transitions,
+    this flags an out-of-domain neural false positive. In such divergent cases, the ensemble
+    prioritizes the physically grounded acoustic features and buffers the score into the
+    UNCERTAIN / review zone, preventing authentic recordings from being falsely convicted
+    with runaway 90%+ fake confidence.
+    """
+    is_array = isinstance(cnn_prob, np.ndarray) or isinstance(heur_prob, np.ndarray)
+    c = np.asarray(cnn_prob, dtype=np.float64)
+    h = np.asarray(heur_prob, dtype=np.float64)
+
+    # Standard balanced blend: 0.60 CNN, 0.40 Heuristic (more robust than 0.75/0.25)
+    base_blend = 0.60 * c + 0.40 * h
+
+    # Discrepancy detection: Heuristic indicates authentic (>=0.65) but CNN predicts fake (<=0.35)
+    divergence_mask = (h >= 0.65) & (c <= 0.35)
+
+    # When divergent, prioritize natural acoustic vocal dynamics and keep in UNCERTAIN zone
+    divergent_blend = 0.35 * c + 0.65 * h
+    divergent_blend = np.maximum(divergent_blend, 0.48)
+
+    blended = np.where(divergence_mask, divergent_blend, base_blend)
+    blended = np.clip(blended, 0.01, 0.99)
+
+    return blended if is_array else float(blended)
+
+
 # ── Phase 2: CNN Detector ──────────────────────────────────────────────────────
 
 def run_phase2_cnn_detection(features: dict, force_verdict: str = None) -> float:
@@ -375,8 +407,7 @@ def run_phase2_cnn_detection(features: dict, force_verdict: str = None) -> float
 
         cnn_score = float(_cnn_real_probability(model, mfcc_sequence[np.newaxis, ...])[0])
         heuristic_score = run_phase1_stub_detection(features)
-        # CNN dominates; heuristic regularizes out-of-domain recordings.
-        score = 0.75 * cnn_score + 0.25 * heuristic_score
+        score = blend_cnn_and_heuristic(cnn_score, heuristic_score)
 
         return float(np.clip(score, 0.01, 0.99))
     except Exception as e:
@@ -430,7 +461,7 @@ def run_segment_detection(segments: list, phase: str = "phase1", force_verdict: 
         batch = np.stack(mfccs, axis=0)
         cnn_probs = _cnn_real_probability(model, batch)
         heur_probs = np.array([heuristic_score_from_mfcc(m) for m in mfccs], dtype=np.float64)
-        real_probs = np.clip(0.75 * cnn_probs + 0.25 * heur_probs, 0.01, 0.99).tolist()
+        real_probs = blend_cnn_and_heuristic(cnn_probs, heur_probs).tolist()
     else:
         real_probs = [heuristic_score_from_mfcc(m) for m in mfccs]
 

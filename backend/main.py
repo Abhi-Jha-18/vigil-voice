@@ -8,6 +8,7 @@ Run with:
 """
 
 import asyncio
+import os
 import importlib.metadata
 import logging
 import platform
@@ -505,7 +506,8 @@ async def _run_analysis_pipeline(temp_path: str, phase: str, force_verdict: Opti
         from backend.detection.recommendations import get_recommendation
         
         segment_predictions = run_segment_detection(preprocessing_result.segments, phase=phase, force_verdict=force_verdict)
-        aggregation = aggregate_predictions(segment_predictions, strategy="max_risk")
+        agg_strategy = os.getenv("AGGREGATION_STRATEGY", "robust_risk")
+        aggregation = aggregate_predictions(segment_predictions, strategy=agg_strategy)
         real_score = aggregation.overall_probability
 
         risk_report = generate_risk_report(

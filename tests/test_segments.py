@@ -82,10 +82,53 @@ def test_empty_segments():
     assert result.average_fake_probability == 0.0
     assert len(result.suspicious_segments) == 0
 
+def test_robust_risk_strategy_isolated_spike():
+    # 3 authentic segments, 1 isolated anomalous spike
+    segments = [
+        create_mock_segment(0, 0.10),
+        create_mock_segment(1, 0.90), # isolated false alarm spike
+        create_mock_segment(2, 0.10),
+        create_mock_segment(3, 0.10),
+    ]
+    result = aggregate_predictions(segments, strategy="robust_risk")
+    # Peak is 0.90, but single-spike protection dampens overall fake prob
+    assert result.maximum_fake_probability == 0.90
+    assert result.overall_probability > 0.40  # Not crushed down to 0.10
+
+def test_robust_risk_strategy_repeated_spoofing():
+    # Repeated spoofing segments -> must enforce maximum risk
+    segments = [
+        create_mock_segment(0, 0.10),
+        create_mock_segment(1, 0.92),
+        create_mock_segment(2, 0.88),
+        create_mock_segment(3, 0.10),
+    ]
+    result = aggregate_predictions(segments, strategy="robust_risk")
+    assert result.maximum_fake_probability == 0.92
+    assert result.overall_probability == pytest.approx(0.08)  # Enforces full max risk
+
+def test_blend_cnn_and_heuristic_divergence():
+    from backend.detection.detector import blend_cnn_and_heuristic
+    
+    # Divergence: CNN claims fake (0.02) but Heuristic confirms authentic voice dynamics (0.85)
+    blended = blend_cnn_and_heuristic(0.02, 0.85)
+    assert blended >= 0.45, f"Expected uncertain buffer >= 0.45, got {blended}"
+
+    # Concordant fake: both detect spoof
+    blended_fake = blend_cnn_and_heuristic(0.05, 0.10)
+    assert blended_fake < 0.20, f"Expected strong fake < 0.20, got {blended_fake}"
+
+    # Concordant authentic: both confirm real
+    blended_real = blend_cnn_and_heuristic(0.90, 0.85)
+    assert blended_real > 0.80, f"Expected strong real > 0.80, got {blended_real}"
+
 if __name__ == "__main__":
     test_max_risk_strategy()
     test_average_strategy()
     test_temporal_consistency_contiguous()
     test_temporal_consistency_isolated()
     test_empty_segments()
+    test_robust_risk_strategy_isolated_spike()
+    test_robust_risk_strategy_repeated_spoofing()
+    test_blend_cnn_and_heuristic_divergence()
     print("All segment aggregation tests passed.")

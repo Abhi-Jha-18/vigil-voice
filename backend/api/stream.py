@@ -79,7 +79,8 @@ class StreamAnalyzer:
             self.segments_history.pop(0)
             
         # 6. Aggregate Rolling Risk
-        aggregation = aggregate_predictions(self.segments_history, strategy="max_risk")
+        agg_strategy = os.getenv("AGGREGATION_STRATEGY", "robust_risk")
+        aggregation = aggregate_predictions(self.segments_history, strategy=agg_strategy)
         risk_report = generate_risk_report(
             max_fake_prob=aggregation.maximum_fake_probability,
             avg_fake_prob=aggregation.average_fake_probability,
