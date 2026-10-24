@@ -6,6 +6,29 @@ const SAMPLE_RATE = 16000
 const TIMELINE_CAP = 40
 const WINDOW_SECONDS = 2.5
 
+function downsampleTo16k(buffer, inSampleRate) {
+  if (!buffer || !buffer.length) return buffer
+  if (inSampleRate === SAMPLE_RATE) return buffer
+  const ratio = inSampleRate / SAMPLE_RATE
+  const newLength = Math.round(buffer.length / ratio)
+  const result = new Float32Array(newLength)
+  let offsetResult = 0
+  let offsetBuffer = 0
+  while (offsetResult < result.length) {
+    const nextOffsetBuffer = Math.round((offsetResult + 1) * ratio)
+    let accum = 0
+    let count = 0
+    for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+      accum += buffer[i]
+      count++
+    }
+    result[offsetResult] = count > 0 ? accum / count : buffer[offsetBuffer] || 0
+    offsetResult++
+    offsetBuffer = nextOffsetBuffer
+  }
+  return result
+}
+
 /**
  * Manages a full live-call monitoring session:
  * REST session creation -> microphone capture -> WebSocket float32 streaming ->
@@ -13,6 +36,7 @@ const WINDOW_SECONDS = 2.5
  */
 export function useLiveDetection() {
   const [connectionState, setConnectionState] = useState('idle') // idle|connecting|connected|error
+  const [sessionId, setSessionId] = useState(null)
   const [elapsed, setElapsed] = useState(0)
   const [riskLevel, setRiskLevel] = useState('LOW_RISK')
   const [riskScore, setRiskScore] = useState(0) // call-level rolling fake score (0..100)
@@ -43,6 +67,7 @@ export function useLiveDetection() {
   })
 
   const resetState = useCallback(() => {
+    setSessionId(null)
     setElapsed(0)
     setRiskLevel('LOW_RISK')
     setRiskScore(0)
@@ -56,6 +81,7 @@ export function useLiveDetection() {
     setError(null)
     setLevelHistory([])
     const r = refs.current
+    r.sessionId = null
     r.peak = 0
     r.scores = []
   }, [])
@@ -115,16 +141,35 @@ export function useLiveDetection() {
         throw new Error('Failed to initialize a live detection session.')
       }
       r.sessionId = session.session_id
+      setSessionId(session.session_id)
 
       // 2. Microphone capture
+      if (!navigator?.mediaDevices?.getUserMedia) {
+        throw new Error('Microphone access is not supported in this browser (requires HTTPS or localhost).')
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
       })
       r.stream = stream
 
       const AudioCtx = window.AudioContext || window.webkitAudioContext
-      const audioCtx = new AudioCtx({ sampleRate: SAMPLE_RATE })
+      if (!AudioCtx) {
+        throw new Error('Web Audio API is not supported in this browser.')
+      }
+      let audioCtx
+      try {
+        audioCtx = new AudioCtx({ sampleRate: SAMPLE_RATE })
+      } catch {
+        // Fallback to default hardware sample rate if 16000 is rejected by device
+        audioCtx = new AudioCtx()
+      }
       r.audioCtx = audioCtx
+
+      // Ensure AudioContext is actively running (handles browser autoplay / suspended state)
+      if (audioCtx.state === 'suspended') {
+        await audioCtx.resume()
+      }
+
       const source = audioCtx.createMediaStreamSource(stream)
       r.source = source
 
@@ -133,8 +178,23 @@ export function useLiveDetection() {
       r.ws = ws
 
       await new Promise((resolve, reject) => {
-        ws.onopen = () => resolve()
-        ws.onerror = () => reject(new Error('Could not establish the live audio connection.'))
+        let settled = false
+        ws.onopen = () => {
+          settled = true
+          resolve()
+        }
+        ws.onerror = () => {
+          if (!settled) {
+            settled = true
+            reject(new Error('Could not establish the live audio connection. Check backend server.'))
+          }
+        }
+        ws.onclose = (e) => {
+          if (!settled) {
+            settled = true
+            reject(new Error(`Live audio connection closed (code: ${e.code || 'unknown'}).`))
+          }
+        }
       })
 
       ws.onmessage = (evt) => {
@@ -191,18 +251,23 @@ export function useLiveDetection() {
       }
 
       ws.onclose = () => {
+        teardownAudio()
         setConnectionState((s) => (s === 'connecting' ? 'error' : 'idle'))
       }
 
-      // 4. ScriptProcessor streams float32 PCM frames over the socket.
+      // 4. ScriptProcessor streams float32 PCM frames downsampled to 16kHz over the socket.
       //    A muted gain node connects to destination to keep the processor
       //    running without echoing the microphone back to the user.
       const processor = audioCtx.createScriptProcessor(4096, 1, 1)
       r.processor = processor
+      const captureSampleRate = audioCtx.sampleRate
       processor.onaudioprocess = (e) => {
         if (ws.readyState === WebSocket.OPEN) {
           const input = e.inputBuffer.getChannelData(0)
-          if (input && input.length) ws.send(input.buffer.slice(0))
+          if (input && input.length) {
+            const out16k = downsampleTo16k(input, captureSampleRate)
+            ws.send(out16k.buffer)
+          }
         }
       }
       const mutedGain = audioCtx.createGain()
@@ -295,7 +360,7 @@ export function useLiveDetection() {
     incident,
     indicators,
     error,
-    sessionId: refs.current.sessionId,
+    sessionId: sessionId || refs.current.sessionId,
     analyserRef: refs,
     start,
     stop,

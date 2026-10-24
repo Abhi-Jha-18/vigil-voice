@@ -140,7 +140,7 @@ class LiveSession:
 
     def get_ready_window(self) -> Optional[np.ndarray]:
         if len(self.buffer) >= self.window_samples:
-            return self.buffer[:self.window_samples]
+            return self.buffer[:self.window_samples].copy()
         return None
 
     def advance_buffer(self) -> None:
@@ -459,9 +459,14 @@ async def websocket_live_audio(websocket: WebSocket, session_id: str):
 
             if "bytes" in message:
                 raw_bytes = message["bytes"]
-                if len(raw_bytes) == 0:
+                if not raw_bytes or len(raw_bytes) < 4:
                     continue
+                remainder = len(raw_bytes) % 4
+                if remainder != 0:
+                    raw_bytes = raw_bytes[:-remainder]
                 audio_chunk = np.frombuffer(raw_bytes, dtype=np.float32)
+                if not np.isfinite(audio_chunk).all():
+                    audio_chunk = np.nan_to_num(audio_chunk, nan=0.0, posinf=1.0, neginf=-1.0)
                 session.add_audio_chunk(audio_chunk)
 
                 # Process all ready overlapping windows

@@ -24,7 +24,13 @@ def _as_origins(value: str | None, environment: str = "development") -> tuple[st
         return tuple(origin.strip() for origin in value.split(",") if origin.strip())
     if environment.lower() == "production":
         return ("https://vigilvoice.internal",)
-    return ("http://127.0.0.1:8000", "http://localhost:8000", "http://localhost:3000")
+    return (
+        "http://127.0.0.1:8000",
+        "http://localhost:8000",
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    )
 
 
 def _resolve_project_path(value: str) -> Path:
