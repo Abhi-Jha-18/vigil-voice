@@ -1,0 +1,8 @@
+{
+  "seen_attacks": null,
+  "unseen_attacks": {
+    "samples": 2000,
+    "accuracy": 0.3405,
+    "eer": 0.2955
+  }
+}

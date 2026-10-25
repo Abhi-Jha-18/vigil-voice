@@ -34,6 +34,7 @@ from backend.detection.detector import SimpleCNNDetector
 from backend.audio.config import default_config
 from training.dataset import AntiSpoofDataset
 from training.metrics import calculate_metrics
+from training.audio_augmentations import available_ffmpeg_codecs
 
 def set_seed(seed: int):
     """Set all random seeds for reproducibility."""
@@ -113,6 +114,9 @@ def train_model(args):
 
     # 1. Setup & Reproducibility
     set_seed(args.seed)
+    feature_version = getattr(args, "feature_version", default_config.feature_version)
+    telephony_augmentation = not getattr(args, "disable_telephony_augmentation", False)
+    ffmpeg_codecs = available_ffmpeg_codecs()
     device = torch.device(args.device if torch.cuda.is_available() and args.device == "cuda" else "cpu")
     print(f"Device: {device} | Seed: {args.seed}")
 
@@ -135,7 +139,15 @@ def train_model(args):
         "batch_size": args.batch_size,
         "learning_rate": args.learning_rate,
         "manifest_path": str(args.manifest),
-        "preprocessing_config": default_config.to_dict(),
+        "preprocessing_config": {
+            **default_config.to_dict(),
+            "feature_version": feature_version,
+            "training_augmentations": {
+                "telephony": telephony_augmentation,
+                "ffmpeg_codecs": ffmpeg_codecs,
+            },
+        },
+        "feature_version": feature_version,
         "model_architecture": "SimpleCNNDetector",
         "dataset_identifier": "unknown"
     }
@@ -150,6 +162,8 @@ def train_model(args):
             allow_synthetic=args.allow_synthetic,
             cache_features=True,
             augment=True,
+            feature_version=feature_version,
+            telephony_augmentation=telephony_augmentation,
         )
         val_dataset = AntiSpoofDataset(
             args.manifest,
@@ -158,6 +172,7 @@ def train_model(args):
             allow_synthetic=args.allow_synthetic,
             cache_features=True,
             augment=False,
+            feature_version=feature_version,
         )
     except Exception as e:
         print(f"\n[ERROR] Dataset initialization failed: {e}")
@@ -198,7 +213,7 @@ def train_model(args):
     print(f"Dataset sources: {dataset_sources} | is_synthetic: {is_synthetic}")
 
     # 5. Model & Optimizer
-    model = SimpleCNNDetector().to(device)
+    model = SimpleCNNDetector(feature_version=feature_version).to(device)
     pos_weight = torch.tensor([num_fake / max(1, num_real)], dtype=torch.float32).to(device)
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     unweighted_criterion = nn.BCEWithLogitsLoss()
@@ -369,6 +384,17 @@ if __name__ == "__main__":
     parser.add_argument("--learning-rate", type=float, default=0.001)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument(
+        "--feature-version",
+        choices=("mfcc_v1", "logmel_delta_v1"),
+        default=default_config.feature_version,
+        help="Input feature pipeline; checkpoint metadata records this value.",
+    )
+    parser.add_argument(
+        "--disable-telephony-augmentation",
+        action="store_true",
+        help="Disable randomized telephony-channel augmentation during training.",
+    )
     parser.add_argument(
         "--allow-synthetic",
         action="store_true",

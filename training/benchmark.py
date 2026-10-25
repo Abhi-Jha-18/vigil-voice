@@ -26,9 +26,13 @@ sys.path.insert(0, project_root)
 
 from backend.config import settings
 from backend.audio.config import default_config
-from backend.detection.detector import SimpleCNNDetector, get_model_status
+from backend.detection.detector import (
+    SimpleCNNDetector,
+    get_model_status,
+    validate_checkpoint_feature_version,
+)
 from backend.audio.pipeline import process_canonical
-from backend.audio.features import extract_acoustic_features
+from backend.audio.features import extract_acoustic_features, feature_crops
 from training.preprocessing import preprocess_for_training
 
 
@@ -55,8 +59,9 @@ def run_benchmark(iterations: int = 25, output_file: str | Path = "reports/perfo
     # 1. Model Loading Latency
     load_start = time.perf_counter()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = SimpleCNNDetector().to(device)
+    model = SimpleCNNDetector(feature_version=default_config.feature_version).to(device)
     if settings.model_path.is_file():
+        validate_checkpoint_feature_version(settings.model_path, default_config.feature_version)
         model.load_state_dict(torch.load(settings.model_path, map_location=device, weights_only=True))
     model.eval()
     model_load_time_ms = (time.perf_counter() - load_start) * 1000
@@ -85,13 +90,8 @@ def run_benchmark(iterations: int = 25, output_file: str | Path = "reports/perfo
         # Feature Extraction
         t_feat_start = time.perf_counter()
         features = extract_acoustic_features(prep_res.audio_data, sr=default_config.sample_rate)
-        mfcc_seq = features.get("mfcc_sequence", [])
-        mfcc = np.array(mfcc_seq, dtype=np.float32)
-        if mfcc.shape[1] < 64:
-            mfcc = np.pad(mfcc, ((0, 0), (0, 64 - mfcc.shape[1])), mode='constant')
-        else:
-            mfcc = mfcc[:, :64]
-        inp_tensor = torch.tensor(mfcc, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
+        input_crop = feature_crops(features["model_features"], n=64, hop=32)[0]
+        inp_tensor = torch.from_numpy(input_crop).unsqueeze(0).to(device)
         t_feat_end = time.perf_counter()
         feat_times.append((t_feat_end - t_feat_start) * 1000)
 

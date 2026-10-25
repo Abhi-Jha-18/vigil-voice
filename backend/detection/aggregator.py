@@ -11,6 +11,7 @@ class SegmentPrediction:
     real_probability: float
     predicted_label: str
     confidence: float
+    gradcam: str | None = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -20,7 +21,8 @@ class SegmentPrediction:
             "fake_probability": float(round(self.fake_probability, 4)),
             "real_probability": float(round(self.real_probability, 4)),
             "predicted_label": self.predicted_label,
-            "confidence": float(round(self.confidence, 4))
+            "confidence": float(round(self.confidence, 4)),
+            "gradcam": self.gradcam,
         }
 
 @dataclass

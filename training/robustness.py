@@ -33,12 +33,26 @@ import matplotlib.pyplot as plt
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from backend.detection.detector import SimpleCNNDetector, get_model_status
-from backend.audio.features import extract_acoustic_features
+from backend.detection.detector import (
+    SimpleCNNDetector,
+    checkpoint_temperature,
+    get_model_status,
+    validate_checkpoint_feature_version,
+)
+from backend.audio.features import extract_model_features, feature_crops
 from backend.audio.config import default_config
 from training.dataset import AntiSpoofDataset, resolve_audio_path
 from training.preprocessing import preprocess_for_training
 from training.metrics import calculate_metrics, calculate_eer
+from training.audio_augmentations import (
+    CodecUnavailableError,
+    add_background_noise,
+    add_reverberation,
+    apply_packet_loss,
+    available_ffmpeg_codecs,
+    bandlimit_telephony,
+    simulate_ffmpeg_codec,
+)
 
 
 # ── Audio Transformation Functions ─────────────────────────────────────────────
@@ -141,6 +155,18 @@ def apply_transformation(y: np.ndarray, sr: int, condition_name: str, seed: int 
         return truncate_audio(y, sr, duration_seconds=3.0)
     elif condition_name == "reverberation_mild":
         return simulate_reverberation(y, sr, decay=5.0)
+    elif condition_name == "telephony_8khz":
+        return bandlimit_telephony(y, sample_rate=sr)
+    elif condition_name == "codec_g711":
+        return simulate_ffmpeg_codec(y, sample_rate=sr, codec="g711")
+    elif condition_name == "codec_amr":
+        return simulate_ffmpeg_codec(y, sample_rate=sr, codec="amr")
+    elif condition_name == "packet_loss":
+        return apply_packet_loss(y, sample_rate=sr, seed=seed)
+    elif condition_name == "background_noise_15db":
+        return add_background_noise(y, snr_db=15.0, seed=seed)
+    elif condition_name == "reverb":
+        return add_reverberation(y, sample_rate=sr, seed=seed)
     elif condition_name == "combined_noise_volume":
         y_noisy = add_noise(y, sr, snr_db=10.0, seed=seed)
         return change_volume(y_noisy, gain_db=-6.0)
@@ -163,6 +189,7 @@ def run_robustness_evaluation(args):
 
     manifest_path = Path(args.manifest)
     checkpoint_path = Path(args.checkpoint)
+    feature_version = getattr(args, "feature_version", default_config.feature_version)
 
     # 1. Safety Guard Check: Model & Dataset Availability
     if not manifest_path.exists() or not checkpoint_path.exists():
@@ -187,10 +214,18 @@ def run_robustness_evaluation(args):
             json.dump(scorecard, f, indent=2)
         return scorecard
 
+    validate_checkpoint_feature_version(checkpoint_path, feature_version)
+
     # 2. Load Dataset (strictly TEST split)
     print(f"Loading test split from {manifest_path}...")
     try:
-        test_dataset = AntiSpoofDataset(manifest_path, split="test", root_dir=project_root)
+        test_dataset = AntiSpoofDataset(
+            manifest_path,
+            split="test",
+            root_dir=project_root,
+            cache_features=False,
+            feature_version=feature_version,
+        )
     except Exception as e:
         print(f"\n[INFO] ROBUSTNESS EVALUATION BLOCKED — {e}")
         scorecard = {
@@ -204,13 +239,52 @@ def run_robustness_evaluation(args):
             json.dump(scorecard, f, indent=2)
         return scorecard
 
+    if any(
+        any(marker in (value or "").lower() for marker in ("demo", "fixture", "mock", "synthetic"))
+        for record in test_dataset.records
+        for value in (record.dataset_source, record.filepath)
+    ):
+        scorecard = {
+            "status": "BLOCKED",
+            "model_status": get_model_status(),
+            "reason": "Robustness metrics are not reported for demo or synthetic data.",
+            "baseline": None,
+            "conditions": {},
+        }
+        with open(reports_dir / "robustness_report.json", "w") as f:
+            json.dump(scorecard, f, indent=2)
+        print(f"\n[INFO] {scorecard['reason']}")
+        return scorecard
+
     print(f"Test samples: {len(test_dataset)}")
+    test_records = test_dataset.records
+    max_samples = getattr(args, "max_samples", None)
+    if max_samples is not None and 0 < max_samples < len(test_records):
+        rng = np.random.default_rng(args.seed)
+        label_groups = {
+            label: [index for index, record in enumerate(test_records) if record.label == label]
+            for label in (0, 1)
+        }
+        selected = []
+        target_per_class = max_samples // 2
+        for label in (0, 1):
+            group = label_groups[label]
+            count = min(len(group), target_per_class)
+            selected.extend(rng.choice(group, size=count, replace=False).tolist())
+        if len(selected) < max_samples:
+            remaining = [index for index in range(len(test_records)) if index not in selected]
+            selected.extend(
+                rng.choice(remaining, size=max_samples - len(selected), replace=False).tolist()
+            )
+        test_records = [test_records[index] for index in sorted(selected)]
+        print(f"Using a deterministic stratified robustness subset: {len(test_records)} samples.")
 
     # 3. Load Model
     device = torch.device(args.device if torch.cuda.is_available() and args.device == "cuda" else "cpu")
-    model = SimpleCNNDetector().to(device)
+    model = SimpleCNNDetector(feature_version=feature_version).to(device)
     model.load_state_dict(torch.load(checkpoint_path, map_location=device, weights_only=True))
     model.eval()
+    temperature = checkpoint_temperature(checkpoint_path)
 
     conditions_to_test = [
         "clean",
@@ -227,6 +301,12 @@ def run_robustness_evaluation(args):
         "short_audio_1s",
         "short_audio_3s",
         "reverberation_mild",
+        "telephony_8khz",
+        "codec_g711",
+        "codec_amr",
+        "packet_loss",
+        "background_noise_15db",
+        "reverb",
         "combined_noise_volume",
         "combined_resample_noise"
     ]
@@ -238,36 +318,48 @@ def run_robustness_evaluation(args):
     print("\nBeginning Transformation Suite Evaluation...")
 
     for cond_idx, cond in enumerate(conditions_to_test, 1):
+        if cond in {"codec_g711", "codec_amr"}:
+            codec_name = "g711" if cond == "codec_g711" else "amr"
+            if not available_ffmpeg_codecs().get(codec_name, False):
+                reason = f"FFmpeg {codec_name} encoder is unavailable."
+                results_by_condition[cond] = {"status": "SKIPPED", "reason": reason}
+                print(f"[{cond_idx:2d}/{len(conditions_to_test)}] {cond:24s} | SKIPPED: {reason}")
+                continue
+
         all_scores = []
         all_labels = []
 
-        for idx in range(len(test_dataset)):
-            record = test_dataset.records[idx]
+        for idx, record in enumerate(test_records):
             audio_path = resolve_audio_path(record, project_root)
             
             try:
                 y = preprocess_for_training(str(audio_path))
-            except Exception:
+            except (OSError, ValueError, RuntimeError):
                 continue
 
-            # Apply transformation
-            y_trans = apply_transformation(y, default_config.sample_rate, cond, seed=args.seed + idx)
+            try:
+                y_trans = apply_transformation(
+                    y, default_config.sample_rate, cond, seed=args.seed + idx
+                )
+            except CodecUnavailableError as exc:
+                results_by_condition[cond] = {
+                    "status": "SKIPPED",
+                    "reason": str(exc),
+                }
+                break
 
             # Feature extraction
-            feat_dict = extract_acoustic_features(y_trans, sr=default_config.sample_rate)
-            mfcc_seq = feat_dict.get("mfcc_sequence")
-            if mfcc_seq is None:
-                continue
-
-            mfcc = np.array(mfcc_seq, dtype=np.float32)
-            if mfcc.shape[1] < 64:
-                mfcc = np.pad(mfcc, ((0, 0), (0, 64 - mfcc.shape[1])), mode='constant')
-            else:
-                mfcc = mfcc[:, :64]
-
-            inp_tensor = torch.tensor(mfcc, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
+            model_features = extract_model_features(
+                y_trans,
+                sr=default_config.sample_rate,
+                feature_version=feature_version,
+            )
+            input_crop = feature_crops(model_features, n=64, hop=32)[0]
+            inp_tensor = torch.from_numpy(input_crop).unsqueeze(0).to(device)
             with torch.no_grad():
-                out_prob = float(model(inp_tensor).squeeze().cpu().numpy())
+                out_prob = float(
+                    torch.sigmoid(model(inp_tensor).squeeze() / temperature).cpu().numpy()
+                )
 
             all_scores.append(out_prob)
             all_labels.append(record.label)
@@ -293,6 +385,10 @@ def run_robustness_evaluation(args):
 
         labels_arr = np.array(all_labels)
         scores_arr = np.array(all_scores)
+
+        if cond in results_by_condition and results_by_condition[cond].get("status") == "SKIPPED":
+            print(f"[{cond_idx:2d}/{len(conditions_to_test)}] {cond:24s} | SKIPPED")
+            continue
 
         predictions_store[cond] = {
             "scores": scores_arr,
@@ -323,6 +419,9 @@ def run_robustness_evaluation(args):
     degradation = {}
 
     for cond, res in results_by_condition.items():
+        if res.get("status") == "SKIPPED":
+            degradation[cond] = {"status": "SKIPPED", "reason": res["reason"]}
+            continue
         degradation[cond] = {
             "accuracy_delta": res["accuracy"] - baseline["accuracy"],
             "eer_delta": res["eer"] - baseline["eer"],
@@ -374,6 +473,8 @@ def run_robustness_evaluation(args):
             "manifest": str(manifest_path),
             "split": "test",
             "sample_rate": default_config.sample_rate,
+            "feature_version": feature_version,
+            "temperature": temperature,
             "seed": args.seed,
             "timestamp": str(np.datetime64('now'))
         },
@@ -382,6 +483,7 @@ def run_robustness_evaluation(args):
         "dataset": "ASVspoof_or_similar",
         "split": "test",
         "test_samples": len(clean_labels),
+        "requested_max_samples": max_samples,
         "baseline": baseline,
         "conditions": results_by_condition,
         "degradation": degradation,
@@ -404,7 +506,10 @@ def run_robustness_evaluation(args):
 # ── Plot Generation ────────────────────────────────────────────────────────────
 
 def generate_robustness_plots(results: dict, predictions_store: dict, reports_dir: Path):
-    cond_names = list(results.keys())
+    cond_names = [
+        name for name, result in results.items()
+        if result.get("status") != "SKIPPED"
+    ]
     accuracies = [results[c]["accuracy"] * 100 for c in cond_names]
     eers = [results[c]["eer"] * 100 for c in cond_names]
     aucs = [results[c]["roc_auc"] for c in cond_names]
@@ -481,6 +586,17 @@ if __name__ == "__main__":
     parser.add_argument("--reports-dir", type=Path, default=Path("reports"), help="Output directory for robustness reports & plots")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducible transformations")
     parser.add_argument("--device", type=str, default="cuda", help="Computation device (cuda/cpu)")
+    parser.add_argument(
+        "--feature-version",
+        choices=("mfcc_v1", "logmel_delta_v1"),
+        default=default_config.feature_version,
+        help="Must match the feature_version recorded by the checkpoint.",
+    )
+    parser.add_argument(
+        "--max-samples",
+        type=int,
+        help="Optional deterministic stratified test subset for faster robustness runs.",
+    )
 
     args = parser.parse_args()
     run_robustness_evaluation(args)

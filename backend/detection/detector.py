@@ -15,6 +15,13 @@ import torch.nn as nn
 from pathlib import Path
 
 from backend.config import settings
+from backend.audio.config import default_config
+from backend.audio.features import (
+    MFCC_FEATURE_VERSION,
+    SUPPORTED_FEATURE_VERSIONS,
+    extract_model_features,
+    feature_crops,
+)
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 MODEL_PATH   = settings.model_path
@@ -39,10 +46,15 @@ class SimpleCNNDetector(nn.Module):
     Frequency pooling uses kernel (1, 2) so the 13 MFCC bins are not crushed
     before AdaptiveAvgPool — higher cepstra carry spoof-discriminative cues.
     """
-    def __init__(self):
+    def __init__(self, feature_version: str | None = None):
         super(SimpleCNNDetector, self).__init__()
+        feature_version = feature_version or default_config.feature_version
+        if feature_version not in SUPPORTED_FEATURE_VERSIONS:
+            raise ValueError(f"Unsupported feature version: {feature_version}")
+        self.feature_version = feature_version
+        input_channels = 3 if feature_version == "logmel_delta_v1" else 1
         self.conv = nn.Sequential(
-            nn.Conv2d(1, 16, kernel_size=3, padding=1),
+            nn.Conv2d(input_channels, 16, kernel_size=3, padding=1),
             nn.BatchNorm2d(16),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=(1, 2)),
@@ -138,6 +150,13 @@ def _get_checkpoint_status(model_file: Path) -> str:
 
                 if metadata.get("dataset_identifier") == "REAL_DATASET_REQUIRED":
                     return "MODEL_UNAVAILABLE"
+                checkpoint_version = metadata.get("feature_version", MFCC_FEATURE_VERSION)
+                if checkpoint_version != default_config.feature_version:
+                    print(
+                        f"[Detector] Feature version mismatch for '{model_file}': "
+                        f"checkpoint uses {checkpoint_version}, configured {default_config.feature_version}."
+                    )
+                    return "FEATURE_VERSION_MISMATCH"
 
                 # Explicit boolean is_synthetic: True -> DEMO_MODEL, False -> REAL_MODEL
                 if "is_synthetic" in metadata:
@@ -150,6 +169,54 @@ def _get_checkpoint_status(model_file: Path) -> str:
 
     # Missing metadata -> DEMO_MODEL
     return "DEMO_MODEL"
+
+
+def checkpoint_feature_version(checkpoint_path: str | Path) -> str:
+    """Return a checkpoint's recorded feature version; legacy checkpoints use MFCC v1."""
+    import json
+
+    metadata_path = Path(checkpoint_path).with_name(
+        Path(checkpoint_path).stem + "_metadata.json"
+    )
+    if not metadata_path.is_file():
+        return MFCC_FEATURE_VERSION
+    with metadata_path.open(encoding="utf-8") as handle:
+        metadata = json.load(handle)
+    version = metadata.get("feature_version", MFCC_FEATURE_VERSION)
+    if version not in SUPPORTED_FEATURE_VERSIONS:
+        raise ValueError(f"Checkpoint has unsupported feature_version: {version}")
+    return version
+
+
+def validate_checkpoint_feature_version(
+    checkpoint_path: str | Path, feature_version: str
+) -> str:
+    """Reject checkpoints trained with a different feature pipeline."""
+    checkpoint_version = checkpoint_feature_version(checkpoint_path)
+    if checkpoint_version != feature_version:
+        raise ValueError(
+            f"Checkpoint feature_version mismatch: checkpoint uses "
+            f"{checkpoint_version}, requested {feature_version}."
+        )
+    return checkpoint_version
+
+
+def checkpoint_temperature(checkpoint_path: str | Path) -> float:
+    """Return validated checkpoint calibration temperature, defaulting for legacy files."""
+    import json
+
+    metadata_path = Path(checkpoint_path).with_name(
+        Path(checkpoint_path).stem + "_metadata.json"
+    )
+    if not metadata_path.is_file():
+        return 1.0
+    with metadata_path.open(encoding="utf-8") as handle:
+        metadata = json.load(handle)
+    calibration = metadata.get("calibration") or {}
+    temperature = float(metadata.get("temperature", calibration.get("temperature", 1.0)))
+    if not np.isfinite(temperature) or temperature <= 0:
+        raise ValueError("Checkpoint temperature must be a finite positive number.")
+    return temperature
 
 
 def _load_cnn_model() -> tuple:
@@ -174,8 +241,11 @@ def _load_cnn_model() -> tuple:
         if status == "MODEL_INTEGRITY_FAILURE":
             _cnn_status = "MODEL_INTEGRITY_FAILURE"
             return None, _cnn_status
+        if status == "FEATURE_VERSION_MISMATCH":
+            _cnn_status = status
+            return None, _cnn_status
 
-        model = SimpleCNNDetector()
+        model = SimpleCNNDetector(feature_version=default_config.feature_version)
         state = torch.load(model_file, map_location="cpu", weights_only=True)
         model.load_state_dict(state)
         model.eval()
@@ -251,7 +321,9 @@ def warmup_cnn_model() -> str:
     """Load weights and run a dummy forward pass so the first user request is fast."""
     model, status = _load_cnn_model()
     if model is not None:
-        dummy = torch.zeros(1, 1, N_MFCC, N_TIME_STEPS)
+        bins = 64 if default_config.feature_version == "logmel_delta_v1" else N_MFCC
+        channels = 3 if default_config.feature_version == "logmel_delta_v1" else 1
+        dummy = torch.zeros(1, channels, bins, N_TIME_STEPS)
         with torch.inference_mode():
             model(dummy)
     return status
@@ -440,8 +512,6 @@ def run_phase2_cnn_detection(features: dict, force_verdict: str = None) -> float
     Falls back to Phase 1 if the model is not available or invalid.
     Blends a light acoustic prior so out-of-domain clips are less brittle.
     """
-    from backend.audio.features import mfcc_crops
-
     if force_verdict and settings.demo_mode:
         return run_phase1_stub_detection(features, force_verdict)
 
@@ -450,18 +520,20 @@ def run_phase2_cnn_detection(features: dict, force_verdict: str = None) -> float
         return run_phase1_stub_detection(features)
 
     try:
-        raw_mfcc = features.get("mfcc_unpadded")
-        if raw_mfcc is None:
-            raw_mfcc = features.get("mfcc_sequence")
-        if raw_mfcc is None:
+        model_features = features.get("model_features")
+        if model_features is None:
+            raw_mfcc = features.get("mfcc_unpadded")
+            if raw_mfcc is None:
+                raw_mfcc = features.get("mfcc_sequence")
+            if raw_mfcc is None:
+                return run_phase1_stub_detection(features)
+            model_features = np.asarray(raw_mfcc, dtype=np.float32)[np.newaxis, ...]
+        model_features = np.asarray(model_features, dtype=np.float32)
+        if model_features.ndim != 3:
             return run_phase1_stub_detection(features)
 
-        mfcc_arr = np.asarray(raw_mfcc, dtype=np.float32)
-        if mfcc_arr.ndim != 2 or mfcc_arr.shape[0] != N_MFCC:
-            return run_phase1_stub_detection(features)
-
-        crops = mfcc_crops(mfcc_arr, n=N_TIME_STEPS, hop=32)
-        tensor = torch.from_numpy(np.ascontiguousarray(crops, dtype=np.float32)).unsqueeze(1)
+        crops = feature_crops(model_features, n=N_TIME_STEPS, hop=32)
+        tensor = torch.from_numpy(np.ascontiguousarray(crops, dtype=np.float32))
         with torch.inference_mode():
             logits = model(tensor).reshape(-1)
             mean_logit = torch.mean(logits)
@@ -510,7 +582,7 @@ def run_segment_detection(segments: list, phase: str = "phase1", force_verdict: 
     import librosa
     from backend.detection.aggregator import SegmentPrediction
     from backend.detection.decision import classify_score
-    from backend.audio.features import _cmn, mfcc_crops, N_FFT, HOP_LENGTH, N_MELS
+    from backend.audio.features import N_FFT, HOP_LENGTH, N_MELS
     from backend.config import settings as _settings
 
     if not segments:
@@ -528,9 +600,12 @@ def run_segment_detection(segments: list, phase: str = "phase1", force_verdict: 
 
     # Compute unpadded MFCC and real spectral centroid per segment
     raw_mfccs = []
+    model_features = []
     sc_means = []
+    audio_segments = []
     for seg in segments:
         y_seg = seg.audio_data.astype(np.float32, copy=False) if seg.audio_data is not None else np.array([], dtype=np.float32)
+        audio_segments.append(y_seg)
         if len(y_seg) > 0:
             m = librosa.feature.mfcc(
                 y=y_seg,
@@ -541,6 +616,13 @@ def run_segment_detection(segments: list, phase: str = "phase1", force_verdict: 
                 n_mels=N_MELS,
             )
             raw_mfccs.append(m)
+            model_features.append(
+                extract_model_features(
+                    y_seg,
+                    sr=_settings.sample_rate,
+                    feature_version=default_config.feature_version,
+                )
+            )
             if len(y_seg) >= N_FFT:
                 try:
                     sc = float(np.mean(librosa.feature.spectral_centroid(
@@ -553,6 +635,9 @@ def run_segment_detection(segments: list, phase: str = "phase1", force_verdict: 
             sc_means.append(sc)
         else:
             raw_mfccs.append(np.zeros((N_MFCC, 0), dtype=np.float32))
+            empty_bins = 64 if default_config.feature_version == "logmel_delta_v1" else N_MFCC
+            empty_channels = 3 if default_config.feature_version == "logmel_delta_v1" else 1
+            model_features.append(np.zeros((empty_channels, empty_bins, N_TIME_STEPS), dtype=np.float32))
             sc_means.append(None)
 
     heur_probs = [
@@ -562,19 +647,39 @@ def run_segment_detection(segments: list, phase: str = "phase1", force_verdict: 
 
     if use_force_verdict:
         real_probs = [run_phase1_stub_detection({}, use_force_verdict) for _ in segments]
+        segment_gradcams = [None for _ in segments]
     elif cnn_ready:
         segment_crop_counts = []
         all_crops_list = []
-        for m in raw_mfccs:
-            cmn_m = _cmn(m)
-            crops = mfcc_crops(cmn_m, n=N_TIME_STEPS, hop=32)
+        for model_feature in model_features:
+            crops = feature_crops(model_feature, n=N_TIME_STEPS, hop=32)
             all_crops_list.append(crops)
             segment_crop_counts.append(len(crops))
 
         all_crops = np.concatenate(all_crops_list, axis=0)
-        tensor = torch.from_numpy(np.ascontiguousarray(all_crops, dtype=np.float32)).unsqueeze(1)
-        with torch.inference_mode():
-            all_logits = model(tensor).reshape(-1)
+        tensor = torch.from_numpy(np.ascontiguousarray(all_crops, dtype=np.float32))
+        activations = {}
+
+        def capture_activations(_module, _inputs, output):
+            activations["value"] = output
+
+        hook = model.conv[6].register_forward_hook(capture_activations)
+        try:
+            with torch.enable_grad():
+                tensor.requires_grad_(True)
+                all_logits = model(tensor).reshape(-1)
+                feature_maps = activations["value"]
+                gradients = torch.autograd.grad(all_logits.sum(), feature_maps)[0]
+                weights = gradients.mean(dim=(2, 3), keepdim=True)
+                cams = torch.relu((weights * feature_maps).sum(dim=1, keepdim=True))
+                cams = torch.nn.functional.interpolate(
+                    cams, size=(64, N_TIME_STEPS), mode="bilinear", align_corners=False
+                ).squeeze(1)
+                mins = cams.amin(dim=(1, 2), keepdim=True)
+                maxs = cams.amax(dim=(1, 2), keepdim=True)
+                cams = ((cams - mins) / (maxs - mins).clamp_min(1e-8)).detach().cpu().numpy()
+        finally:
+            hook.remove()
 
         cnn_probs = []
         offset = 0
@@ -582,8 +687,22 @@ def run_segment_detection(segments: list, phase: str = "phase1", force_verdict: 
             seg_logits = all_logits[offset : offset + count]
             mean_logit = torch.mean(seg_logits)
             scaled_logit = mean_logit / max(0.01, _cnn_temperature)
-            p = float(torch.sigmoid(scaled_logit).cpu().numpy())
+            p = float(torch.sigmoid(scaled_logit.detach()).cpu().numpy())
             cnn_probs.append(float(np.clip(p, 0.01, 0.99)))
+            offset += count
+
+        from backend.audio.features import render_gradcam_b64
+        segment_gradcams = []
+        offset = 0
+        for segment_index, count in enumerate(segment_crop_counts):
+            segment_cam = np.mean(cams[offset : offset + count], axis=0)
+            segment_gradcams.append(
+                render_gradcam_b64(
+                    segment_cam,
+                    audio=audio_segments[segment_index],
+                    sr=_settings.sample_rate,
+                )
+            )
             offset += count
 
         effective_blend = _settings.resolve_blend_mode(status)
@@ -596,9 +715,10 @@ def run_segment_detection(segments: list, phase: str = "phase1", force_verdict: 
             ).tolist()
     else:
         real_probs = heur_probs
+        segment_gradcams = [None for _ in segments]
 
     t_real, t_fake = get_model_thresholds()
-    for seg, real_prob in zip(segments, real_probs):
+    for seg, real_prob, gradcam in zip(segments, real_probs, segment_gradcams):
         real_prob = float(real_prob)
         fake_prob = 1.0 - real_prob
         pred_label, conf = classify_score(real_prob, threshold_real=t_real, threshold_fake=t_fake)
@@ -610,7 +730,8 @@ def run_segment_detection(segments: list, phase: str = "phase1", force_verdict: 
             fake_probability=fake_prob,
             real_probability=real_prob,
             predicted_label=pred_label,
-            confidence=conf
+            confidence=conf,
+            gradcam=gradcam,
         ))
 
     return predictions

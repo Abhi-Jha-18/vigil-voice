@@ -231,7 +231,7 @@ flowchart TD
         VAD --> Slider["2.5s Sliding Window Buffer (1.0s hop)"]
         
         Slider --> Preprocessing["Canonical Preprocessing (Quality + Normalization)"]
-        Preprocessing --> Feats["Feature Extraction (13-bin CMN MFCC)"]
+        Preprocessing --> Feats["Feature Extraction (13-bin CMN MFCC or 64-bin log-mel + deltas)"]
         
         Feats --> CNN["Phase 2 CNN Detector (SimpleCNNDetector)"]
         Feats --> Heuristic["Phase 1 Acoustic Heuristic"]
@@ -267,12 +267,15 @@ VigilVoice uses specific, standardized segment lengths tailored to each operatio
 
 ### Overview and Intended Use
 - **Architecture:** `SimpleCNNDetector` (Phase 2), a 2D CNN for acoustic spoof detection. Phase 1 is a separate acoustic heuristic; Phases 3 and 4 are architecture stubs, not additional trained models.
-- **Input:** 13 MFCC coefficients with Cepstral Mean Normalization (CMN), cropped to 64 time steps (`(1, 13, 64)`) from 16 kHz mono audio.
+- **Input:** By default, 13 MFCC coefficients with Cepstral Mean Normalization (`mfcc_v1`, `(1, 13, 64)`). Set `FEATURE_VERSION=logmel_delta_v1` to train and serve with 64-bin log-mel, delta, and delta-delta channels (`(3, 64, 64)`) with per-channel mean/variance normalization.
+- **Checkpoint compatibility:** Training records `feature_version` in checkpoint metadata. Evaluation and inference reject incompatible feature versions; set the same `FEATURE_VERSION` used for training.
+- **Training robustness:** Training applies randomized telephony band-limiting, packet loss, background noise, reverberation, and FFmpeg G.711/AMR when the corresponding local encoder is available. Robustness reports list results per condition and explicitly mark unavailable codec tests as skipped.
+- **Explainability:** Upload analysis returns per-window scores and Grad-CAM overlays on the corresponding log-mel spectrogram when the CNN is active.
 - **Output:** A sigmoid score estimating $P(\text{bonafide}) \in [0, 1]$, followed by thresholding and risk aggregation.
 - **Intended use:** Research and defensive decision support. Scores are probabilistic indicators, not proof of identity, fraud, or legal culpability.
 
 ### Data and Evaluation Protocol
-- Checkpoint metadata identifies the training data as `ASVSpoof2019_LA_VigilVoice`. The source corpus and complete original training/evaluation audio are not bundled, so that provenance and the metadata's training metrics cannot be independently reproduced from this checkout.
+- Checkpoint metadata records dataset provenance, preprocessing, and feature version. Use `training/evaluate.py` on a held-out real-data split to produce CNN-only and blended metrics; metrics from demo/synthetic data are blocked.
 - `data/metadata.csv` and the generated demo audio are **synthetic demonstration data, not valid anti-spoofing benchmark data**.
 - `training/splits.py` supports speaker-disjoint and generator-disjoint assignments. For a meaningful unseen-attack result, evaluate generators held out from training in `test_unseen` (or an equivalent generator-disjoint split) and publish the manifest, sample counts, and per-attack metrics.
 

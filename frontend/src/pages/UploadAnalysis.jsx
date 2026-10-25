@@ -429,6 +429,11 @@ function ResultView({ result }) {
 }
 
 function SegmentBar({ segments }) {
+  const [selectedSegmentId, setSelectedSegmentId] = useState(null)
+  const selectedSegment =
+    segments.find((segment) => segment.segment_id === selectedSegmentId) ||
+    segments.find((segment) => segment.gradcam)
+
   return (
     <div className="panel-soft p-4">
       <p className="eyebrow mb-3">
@@ -439,10 +444,16 @@ function SegmentBar({ segments }) {
           const p = s.fake_probability
           const color = p > 0.6 ? 'bg-rose-400' : p > 0.4 ? 'bg-amber-400' : 'bg-emerald-400'
           return (
-            <div
+            <button
               key={s.segment_id}
+              type="button"
               title={`${s.start_time.toFixed(1)}s–${s.end_time.toFixed(1)}s · ${s.predicted_label} · ${pct100(p, 0)}`}
-              className={`h-8 flex-1 rounded ${color} opacity-80 transition hover:opacity-100`}
+              aria-label={`View segment ${s.segment_id + 1} saliency`}
+              aria-pressed={selectedSegment?.segment_id === s.segment_id}
+              onClick={() => setSelectedSegmentId(s.segment_id)}
+              className={`h-8 flex-1 rounded ${color} opacity-80 transition hover:opacity-100 ${
+                selectedSegment?.segment_id === s.segment_id ? 'ring-2 ring-white' : ''
+              }`}
             />
           )
         })}
@@ -455,6 +466,18 @@ function SegmentBar({ segments }) {
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-rose-400" /> Spoof</span>
         </div>
       </div>
+      {selectedSegment?.gradcam && (
+        <div className="mt-4 border-t border-line pt-3">
+          <p className="eyebrow mb-2">
+            Grad-CAM saliency · {selectedSegment.start_time.toFixed(1)}s–{selectedSegment.end_time.toFixed(1)}s
+          </p>
+          <img
+            src={`data:image/png;base64,${selectedSegment.gradcam}`}
+            alt={`Grad-CAM saliency overlay for segment ${selectedSegment.segment_id + 1}`}
+            className="w-full rounded-lg border border-line"
+          />
+        </div>
+      )}
     </div>
   )
 }

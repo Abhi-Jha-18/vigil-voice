@@ -55,6 +55,12 @@ Optional `source_id` and `augmentation_of` fields identify common originals. The
 4. Keep existing `train`/`validation`/`test` assignments in the metadata; `data/prepare.py` preserves them. If every `split` value is blank, it creates speaker-disjoint assignments. In either case it validates the result with `split_integrity_issues` before writing the manifest.
 5. Report evaluation by `attack_type` and `generator_id` whenever those fields are available.
 
+## Feature and robustness settings
+
+The default model feature pipeline is `mfcc_v1`. Set `FEATURE_VERSION=logmel_delta_v1` consistently during training, evaluation, and serving to use 64-bin log-mel features with delta and delta-delta channels. Checkpoint metadata records this choice and mismatches are rejected.
+
+Training telephony augmentation uses FFmpeg G.711/AMR encoders when installed, alongside 8 kHz band-limiting, packet loss, background noise, and reverberation. `training/robustness.py` reports each condition separately; unavailable FFmpeg codecs are marked skipped rather than assigned fabricated results. Cross-dataset evaluation requires a separately licensed corpus and manifest.
+
 ## Bundled audio warning
 
 `data/generate_synthetic_data.py` and its generated files are **DEMO DATA — NOT VALID FOR MODEL PERFORMANCE CLAIMS**. They exist only for UI/integration testing.

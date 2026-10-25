@@ -227,6 +227,8 @@ def test_demo_mode_false_ignores_force_verdict_detector_and_api():
         body = resp.json()
         assert body["demo_override"] is False
         assert body["verdict"] in {"FAKE", "UNCERTAIN"}
+        assert isinstance(body["score_timeline"], list)
+        assert len(body["score_timeline"]) == len(body["segments"])
 
     # 2. With demo_mode = True: force_verdict is honored
     with patch.object(settings, "demo_mode", True):
@@ -484,5 +486,4 @@ def test_pinned_model_sha256_verification():
                     assert status == "REAL_MODEL"
                 finally:
                     reset_cached_model()
-
 

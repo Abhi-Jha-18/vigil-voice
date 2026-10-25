@@ -267,9 +267,14 @@ class AntiSpoofDataset(Dataset):
         allow_synthetic: bool = False,
         cache_features: bool = True,
         augment: bool = False,
+        feature_version: str | None = None,
+        telephony_augmentation: bool = True,
     ):
         self.root_dir = Path(root_dir) if root_dir else Path(manifest_path).parent
         self.augment = bool(augment and (split or "").lower() == "train")
+        self.telephony_augmentation = bool(self.augment and telephony_augmentation)
+        from backend.audio.config import default_config
+        self.feature_version = feature_version or default_config.feature_version
         try:
             all_records = load_metadata(manifest_path)
         except Exception as e:
@@ -308,8 +313,7 @@ class AntiSpoofDataset(Dataset):
             raise FileNotFoundError(f"Missing audio file: {filepath}")
 
         # Lazy imports — avoids pulling matplotlib into validation-only code paths
-        import librosa
-        from backend.audio.features import _cmn, mfcc_crops, N_MFCC, N_FFT, HOP_LENGTH, N_MELS
+        from backend.audio.features import extract_acoustic_features, feature_crops
         from training.preprocessing import preprocess_for_training
 
         # Use canonical preprocessing (to ensure training == inference)
@@ -321,27 +325,35 @@ class AntiSpoofDataset(Dataset):
 
         if audio_array is None or len(audio_array) == 0:
             raise ValueError(f"Empty audio for {filepath}")
+        if self.telephony_augmentation:
+            from training.audio_augmentations import augment_telephony
+            audio_array = augment_telephony(audio_array, sample_rate=16000)
 
-        raw_mfcc = librosa.feature.mfcc(
-            y=audio_array.astype(np.float32, copy=False),
+        acoustic_features = extract_acoustic_features(
+            audio_array,
             sr=16000,
-            n_mfcc=N_MFCC,
-            n_fft=N_FFT,
-            hop_length=HOP_LENGTH,
-            n_mels=N_MELS,
+            feature_version=self.feature_version,
         )
-        cmn_mfcc = _cmn(raw_mfcc)
-        crops = mfcc_crops(cmn_mfcc, n=64, hop=32)
-        if crops is None or len(crops) == 0 or crops.shape[1:] != (13, 64):
+        feature_matrix = acoustic_features["model_features"]
+        crops = feature_crops(feature_matrix, n=64, hop=32)
+        expected_bins = 64 if self.feature_version == "logmel_delta_v1" else 13
+        if len(crops) == 0 or crops.shape[1:] != (
+            3 if self.feature_version == "logmel_delta_v1" else 1,
+            expected_bins,
+            64,
+        ):
             raise ValueError(f"Feature extraction failed for {filepath}")
 
         label = torch.tensor(record.label, dtype=torch.float32)
+        from backend.detection.detector import run_phase1_stub_detection
+        heuristic_score = run_phase1_stub_detection(acoustic_features)
         metadata = {
             "speaker_id": record.speaker_id,
             "attack_type": record.attack_type,
             "generator_id": record.generator_id,
             "split": record.split,
-            "filepath": str(filepath)
+            "filepath": str(filepath),
+            "heuristic_score": heuristic_score,
         }
         return crops, label, metadata
 
@@ -354,13 +366,13 @@ class AntiSpoofDataset(Dataset):
         if self.augment:
             crop_idx = int(torch.randint(0, len(crops), (1,)).item())
             crop = crops[crop_idx]
-            tensor = torch.from_numpy(np.ascontiguousarray(crop, dtype=np.float32)).unsqueeze(0)
+            tensor = torch.from_numpy(np.ascontiguousarray(crop, dtype=np.float32))
             shift = int(torch.randint(-6, 7, (1,)).item())
             if shift:
                 tensor = torch.roll(tensor, shifts=shift, dims=-1)
             tensor = tensor + torch.randn_like(tensor) * 0.35
         else:
             crop = crops[0]
-            tensor = torch.from_numpy(np.ascontiguousarray(crop, dtype=np.float32)).unsqueeze(0)
+            tensor = torch.from_numpy(np.ascontiguousarray(crop, dtype=np.float32))
 
         return tensor, label, metadata

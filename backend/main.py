@@ -743,6 +743,7 @@ async def _run_analysis_pipeline(
             t_real, t_fake = get_model_thresholds()
             decision = make_decision(real_score, threshold_real=t_real, threshold_fake=t_fake)
             processing_time_ms = int((time.perf_counter() - start_time) * 1000)
+            segments_payload = [segment.to_dict() for segment in segment_predictions]
 
             return {
                 "success": True,
@@ -764,7 +765,16 @@ async def _run_analysis_pipeline(
                     "mfcc_mean": features["mfcc_mean"]
                 },
                 "spectrogram": f"data:image/png;base64,{spectrogram_b64}" if spectrogram_b64 else None,
-                "segments": [s.to_dict() for s in segment_predictions],
+                "segments": segments_payload,
+                "score_timeline": [
+                    {
+                        "start_time": segment["start_time"],
+                        "end_time": segment["end_time"],
+                        "fake_probability": segment["fake_probability"],
+                        "real_probability": segment["real_probability"],
+                    }
+                    for segment in segments_payload
+                ],
                 "aggregation": aggregation.to_dict(),
                 "risk_report": risk_report,
                 "security_recommendation": security_recommendation

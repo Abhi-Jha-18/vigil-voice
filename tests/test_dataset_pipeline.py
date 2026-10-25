@@ -276,8 +276,8 @@ def test_feature_parity_training_vs_inference(tmp_path: Path):
     assert torch.allclose(training_tensor, inference_tensor, atol=1e-5, rtol=1e-5)
 
 
-def test_evaluate_seen_vs_unseen_attacks(tmp_path: Path):
-    """evaluate.py must report metrics for seen vs unseen attacks separately."""
+def test_evaluate_blocks_synthetic_metrics(tmp_path: Path):
+    """Evaluation must not report performance metrics from synthetic fixtures."""
     import json
     from types import SimpleNamespace
     from backend.detection.detector import SimpleCNNDetector
@@ -319,17 +319,13 @@ def test_evaluate_seen_vs_unseen_attacks(tmp_path: Path):
         deploy=False,
         max_eer=0.05,
     )
-    evaluate_model(args)
+    report = evaluate_model(args)
 
     assert out_report.is_file()
     with open(out_report) as f:
         data = json.load(f)
 
-    assert "seen_attacks" in data
-    assert "unseen_attacks" in data
-    assert data["seen_attacks"]["samples"] == 1
-    assert data["unseen_attacks"]["samples"] == 1
-    assert "accuracy" in data["seen_attacks"]
-    assert "eer" in data["seen_attacks"]
-    assert "accuracy" in data["unseen_attacks"]
-    assert "eer" in data["unseen_attacks"]
+    assert report["status"] == "BLOCKED"
+    assert data["status"] == "BLOCKED"
+    assert data["is_synthetic"] is True
+    assert "accuracy" not in data

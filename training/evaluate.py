@@ -25,6 +25,12 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 from backend.detection.detector import SimpleCNNDetector
+from backend.detection.detector import (
+    blend_cnn_and_heuristic,
+    checkpoint_temperature,
+    validate_checkpoint_feature_version,
+)
+from backend.audio.config import default_config
 from training.dataset import AntiSpoofDataset, load_metadata
 from training.metrics import calculate_metrics, calculate_eer
 
@@ -38,6 +44,10 @@ def evaluate_model(args):
     if not os.path.exists(args.checkpoint):
         print(f"[ERROR] Checkpoint not found: {args.checkpoint}")
         sys.exit(1)
+
+    feature_version = getattr(args, "feature_version", default_config.feature_version)
+    validate_checkpoint_feature_version(args.checkpoint, feature_version)
+    temperature = checkpoint_temperature(args.checkpoint)
 
     # 1. Load Dataset (TEST and unseen attack splits)
     print(f"Loading evaluation split from {args.manifest}...")
@@ -63,19 +73,41 @@ def evaluate_model(args):
             args.manifest,
             split=eval_split,
             root_dir=Path(project_root),
-            allow_synthetic=args.allow_synthetic,
-            cache_features=True,
+            allow_synthetic=getattr(args, "allow_synthetic", False),
+            cache_features=False,
+            feature_version=feature_version,
         )
     except Exception as e:
         print(f"\n[ERROR] Dataset initialization failed: {e}")
         print("REAL DATASET REQUIRED — EVALUATION NOT YET EXECUTED.")
         sys.exit(1)
 
+    is_synthetic = bool(getattr(args, "allow_synthetic", False)) or any(
+        any(marker in (value or "").lower() for marker in ("demo", "fixture", "mock", "synthetic"))
+        for record in test_dataset.records
+        for value in (record.dataset_source, record.filepath)
+    )
+    if is_synthetic:
+        report = {
+            "status": "BLOCKED",
+            "dataset_type": "SYNTHETIC",
+            "is_synthetic": True,
+            "reason": "Evaluation metrics are not reported for demo or synthetic data.",
+            "manifest": str(args.manifest),
+            "checkpoint": str(args.checkpoint),
+        }
+        if args.output:
+            out_path = Path(args.output)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        print("[BLOCKED] Evaluation metrics are not reported for demo or synthetic data.")
+        return report
+
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
     print(f"Test samples: {len(test_dataset)}")
 
     # 2. Load Model
-    model = SimpleCNNDetector().to(device)
+    model = SimpleCNNDetector(feature_version=feature_version).to(device)
     model.load_state_dict(torch.load(args.checkpoint, map_location=device, weights_only=True))
     model.eval()
 
@@ -85,6 +117,7 @@ def evaluate_model(args):
     all_attack_types = []
     all_generator_ids = []
     all_splits = []
+    all_heuristic_scores = []
     
     with torch.no_grad():
         for inputs, labels, metas in test_loader:
@@ -93,6 +126,13 @@ def evaluate_model(args):
             
             all_logits.extend(outputs.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
+            heuristic_batch = metas.get("heuristic_score")
+            if heuristic_batch is None:
+                all_heuristic_scores.extend([0.5] * inputs.size(0))
+            elif torch.is_tensor(heuristic_batch):
+                all_heuristic_scores.extend(heuristic_batch.cpu().numpy())
+            else:
+                all_heuristic_scores.extend(heuristic_batch)
             
             # Extract attack types from metadata dictionary
             if "attack_type" in metas:
@@ -113,13 +153,18 @@ def evaluate_model(args):
     all_labels = np.array(all_labels)
     all_logits = np.array(all_logits)
     # Probabilities clipped only for display
-    all_preds = 1.0 / (1.0 + np.exp(-all_logits))
+    calibrated_logits = all_logits / temperature
+    all_preds = 1.0 / (1.0 + np.exp(-calibrated_logits))
+    blended_preds = blend_cnn_and_heuristic(
+        all_preds, np.asarray(all_heuristic_scores, dtype=np.float64)
+    )
     all_attack_types = np.array(all_attack_types)
     all_generator_ids = np.array(all_generator_ids)
     all_splits = np.array(all_splits)
 
     # 4. Metrics (computed on raw logits; clip only for display)
-    metrics = calculate_metrics(all_labels, all_preds, raw_logits=all_logits)
+    metrics = calculate_metrics(all_labels, all_preds, raw_logits=calibrated_logits)
+    blended_metrics = calculate_metrics(all_labels, blended_preds)
     eer = metrics["eer"]
     eer_threshold = metrics["eer_threshold"]
 
@@ -159,11 +204,7 @@ def evaluate_model(args):
     unseen_attack_metrics = _calc_subset_metrics(unseen_spoof_mask)
 
     # Check if dataset contains demo/fixture records
-    is_demo_fixture = any(
-        any(k in (r.dataset_source or "").lower() or k in (r.filepath or "").lower() for k in ("demo", "fixture", "mock", "synthetic"))
-        for r in test_dataset.records
-    )
-    is_synthetic = bool(args.allow_synthetic or is_demo_fixture)
+    is_synthetic = False
     
     report = {
         "dataset": "synthetic_local" if is_synthetic else "ASVspoof_or_similar",
@@ -182,7 +223,17 @@ def evaluate_model(args):
         "frr": metrics['frr'],
         "eer_threshold": eer_threshold,
         "manifest": str(args.manifest),
-        "checkpoint": str(args.checkpoint)
+        "checkpoint": str(args.checkpoint),
+        "feature_version": feature_version,
+        "temperature": temperature,
+        "model_comparison": {
+            "cnn_only": metrics,
+            "blended": blended_metrics,
+        },
+        "cross_dataset": {
+            "status": "NOT_AVAILABLE",
+            "reason": "No second real dataset manifest was supplied.",
+        },
     }
     if seen_attack_metrics:
         report["seen_attacks"] = seen_attack_metrics
@@ -202,6 +253,15 @@ def evaluate_model(args):
     print(f"EER:       {eer*100:.2f}% (at threshold {eer_threshold:.4f})")
     print(f"FAR:       {metrics['far']*100:.2f}%")
     print(f"FRR:       {metrics['frr']*100:.2f}%")
+    print("\n--- CNN-only vs Blended ---")
+    print(
+        f"CNN-only | Accuracy: {metrics['accuracy']*100:.2f}% | "
+        f"EER: {metrics['eer']*100:.2f}% | AUC: {metrics['roc_auc']:.4f}"
+    )
+    print(
+        f"Blended  | Accuracy: {blended_metrics['accuracy']*100:.2f}% | "
+        f"EER: {blended_metrics['eer']*100:.2f}% | AUC: {blended_metrics['roc_auc']:.4f}"
+    )
 
     print("\n--- Seen vs Unseen Attack Analysis ---")
     if seen_attack_metrics:
@@ -307,21 +367,28 @@ def evaluate_model(args):
                     bonafide_mask_att = (all_labels == 1)
                     y_true_combined = np.concatenate([y_true_a, all_labels[bonafide_mask_att]])
                     y_pred_combined = np.concatenate([y_pred_a, all_preds[bonafide_mask_att]])
+                elif np.all(y_true_a == 1):
+                    y_true_combined = np.array([], dtype=all_labels.dtype)
+                    y_pred_combined = np.array([], dtype=all_preds.dtype)
                 else:
                     y_true_combined = y_true_a
                     y_pred_combined = y_pred_a
                     
-                try:
-                    att_eer, _ = calculate_eer(y_true_combined, y_pred_combined)
-                except Exception:
-                    att_eer = -1.0
+                if len(y_true_combined) == 0:
+                    att_eer = None
+                else:
+                    try:
+                        att_eer, _ = calculate_eer(y_true_combined, y_pred_combined)
+                    except ValueError:
+                        att_eer = None
                     
                 attack_results[attack] = {
                     "samples": int(np.sum(mask)),
                     "accuracy": acc,
                     "eer": att_eer
                 }
-                print(f"  {attack:12s} | Samples: {np.sum(mask):4d} | Acc: {acc*100:5.1f}% | EER: {att_eer*100:5.1f}%")
+                eer_text = f"{att_eer*100:5.1f}%" if att_eer is not None else "  n/a "
+                print(f"  {attack:12s} | Samples: {np.sum(mask):4d} | Acc: {acc*100:5.1f}% | EER: {eer_text}")
             
             attack_out = reports_dir / "attack_type_results.json"
             with open(attack_out, "w") as f:
@@ -339,9 +406,15 @@ if __name__ == "__main__":
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--split", type=str, default="test", help="Split to evaluate (default: 'test')")
     parser.add_argument(
+        "--feature-version",
+        choices=("mfcc_v1", "logmel_delta_v1"),
+        default=default_config.feature_version,
+        help="Must match the feature_version recorded by the checkpoint.",
+    )
+    parser.add_argument(
         "--allow-synthetic",
         action="store_true",
-        help="Allow evaluation on DEMO/synthetic fixtures.",
+        help="Load demo fixtures for diagnostics; performance metrics remain blocked.",
     )
     parser.add_argument(
         "--deploy",
