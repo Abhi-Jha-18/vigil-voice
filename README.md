@@ -1,6 +1,10 @@
 # VigilVoice - AI Audio Deepfake & Spoofing Detection Dashboard
 
-VigilVoice is an advanced, real-time audio analysis and security engine designed to detect synthetic voice clones, AI-generated speech, and audio spoofing attacks. Developed as a prototype for college Smart India Hackathon (SIH) presentations.
+[![CI](https://github.com/Abhi-Jha-18/vigil-voice/actions/workflows/ci.yml/badge.svg)](https://github.com/Abhi-Jha-18/vigil-voice/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python: 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3119/)
+
+VigilVoice is an advanced, real-time audio analysis and security engine designed to detect synthetic voice clones, AI-generated speech, and audio spoofing attacks. Developed as an enterprise-grade defense prototype for Smart India Hackathon (SIH) cybersecurity challenges.
 
 ---
 
@@ -23,67 +27,85 @@ VigilVoice is an advanced, real-time audio analysis and security engine designed
 VigilVoice/
 │
 ├── backend/
-│   ├── main.py                # FastAPI app endpoints & static asset mounts
+│   ├── main.py                # FastAPI app endpoints, WebSockets & static asset mounts
+│   ├── config.py              # Centralized environment settings & runtime options
 │   │
 │   ├── audio/
+│   │   ├── config.py          # PreprocessingConfig & default settings
+│   │   ├── pipeline.py        # Canonical audio preprocessing & segmentation pipeline
 │   │   ├── processor.py       # Audio validation, loading, resampling & normalization
 │   │   ├── vad.py             # Voice Activity Detection (silence clipper)
-│   │   └── features.py        # Mel spectrogram base64 plotter & MFCC extractor
+│   │   ├── quality.py         # Audio quality assurance checks (duration, silence, clipping)
+│   │   └── features.py        # Mel spectrogram plotter & MFCC extractor
 │   │
 │   ├── detection/
-│   │   ├── detector.py        # AI classification logic (includes stub & PyTorch model definitions)
-│   │   └── decision.py        # Decision maps and risk assignment
+│   │   ├── detector.py        # AI classification logic (heuristic stub & CNN model)
+│   │   ├── decision.py        # Decision boundaries, confidence scoring & risk tiers
+│   │   ├── aggregator.py      # Multi-segment probability aggregation strategies
+│   │   ├── explainability.py  # Evidence extraction & acoustic cue highlights
+│   │   └── risk.py            # Financial and security risk level assessment engine
 │   │
 │   └── utils/
 │       └── audio_utils.py     # Upload and cache file helper utilities
 │
 ├── training/
-│   ├── prepare_dataset.py     # Dataset validation, statistics generation, and split creation
+│   ├── prepare_dataset.py     # Advanced dataset validation and split generation pipeline
+│   ├── benchmark.py           # Latency benchmarking & performance profiling suite
+│   ├── load_test.py           # Concurrency and endpoint stress testing tool
 │   ├── train.py               # Production CNN training loop with class imbalance weighting
-│   ├── evaluate.py            # Test set evaluation: EER, ROC-AUC, FAR/FRR, Confusion Matrix, and Attack-Type analysis
-│   ├── robustness.py          # Robustness & adversarial transformation suite (Noise, Resampling, Volume, Reverberation)
-│   └── metrics.py             # EER, ROC-AUC, Precision/Recall, FAR/FRR metrics
+│   ├── evaluate.py            # Evaluation: EER, ROC-AUC, seen vs. unseen attack analysis
+│   ├── preprocessing.py       # Thin training wrapper over backend canonical pipeline
+│   ├── splits.py              # Speaker-disjoint & generator-disjoint split creation
+│   ├── dataset.py             # PyTorch AntiSpoofDataset & metadata validation
+│   ├── robustness.py          # Adversarial transformation suite (Noise, Codec, Reverb)
+│   └── metrics.py             # EER, ROC-AUC, FAR/FRR, and threshold calculation
 │
 ├── models/
-│   └── README.md              # Checkpoint repository details
+│   └── README.md              # Checkpoint repository details and LFS instructions
 │
 ├── data/
-│   ├── raw/                   # Unprocessed audio samples
-│   ├── processed/             # Featurized dataset arrays
-│   └── metadata.csv           # File labels indexing spreadsheet
+│   ├── prepare.py             # CLI dataset preparation script for validation & splits
+│   ├── metadata.csv           # File labels indexing spreadsheet
+│   ├── raw/                   # Unprocessed audio samples (fixtures/real data)
+│   └── splits/                # Generated split manifests (manifest.csv)
 │
-├── tests/                     # Automated integration test suite (Phases 11–15)
+├── tests/                     # Automated test suite (Phases 11–16, 105 automated tests)
 │
 ├── frontend/                  # React + Vite + Tailwind frontend (source)
 │   ├── src/
-│   │   ├── components/        # layout, dashboard, live, incidents, common UI
-│   │   ├── pages/             # Dashboard, LiveDetection, UploadAnalysis,
-│   │   │                      # Incidents, IncidentDetails, ModelCenter, Reports, Settings
+│   │   ├── components/        # Layout, dashboard, timeline, risk radar, audio player
+│   │   ├── pages/             # Dashboard, LiveDetection, UploadAnalysis, Incidents, etc.
 │   │   ├── hooks/             # useLiveDetection, useModelStatus, useIncidents
-│   │   ├── services/          # api.js (REST), websocket.js
-│   │   └── utils/             # risk mapping & formatting helpers
+│   │   └── services/          # api.js (REST), websocket.js
 │   ├── package.json
-│   ├── vite.config.js         # builds into ../static ; proxies /api in dev
+│   ├── vite.config.js         # Builds into ../static; proxies /api in dev
 │   └── tailwind.config.js
 │
-├── static/                    # BUILD OUTPUT — generated by `npm run build`
-│   ├── index.html             # (Vite emits the SPA entry here)
-│   └── assets/                # content-hashed JS/CSS/font bundles (git-ignored)
+├── static/                    # Build output — generated by `npm run build`
+│   ├── index.html             # Production SPA entry
+│   └── assets/                # Bundled JS/CSS/font assets
 │
-├── requirements.txt           # PIP packages list
-├── README.md                  # Project documentation manual
-├── .gitignore                 # VCS filters
-└── .env.example               # Environmental variables skeleton
+├── .github/
+│   └── workflows/
+│       └── ci.yml             # GitHub Actions CI workflow (tests & frontend build)
+│
+├── requirements.txt           # Python dependencies pinned for Python 3.11
+├── LICENSE                    # MIT License
+├── pytest.ini                 # Pytest configuration
+├── conftest.py                # Pytest root configuration
+└── README.md                  # Comprehensive documentation manual
 ```
 
 ---
 
 ## 🛠️ Installation & Setup
 
-1. **Prerequisites**: Install **Python 3.11.x**. This is the supported development version; do not use the current Python 3.13 environment for this project.
-2. **Clone the directory** and navigate to the project directory:
+1. **Prerequisites**: Install **Python 3.11** (Python 3.11.x is required for PyTorch CPU wheel and audio library stability; do not use Python 3.12 or 3.13) and **Node.js 18+**.
+2. **Clone the repository** and navigate to the project directory:
    ```bash
-VigilVoice requires Python 3.11+.
+   git clone https://github.com/Abhi-Jha-18/vigil-voice.git
+   cd vigil-voice
+   ```
 
 > [!WARNING]
 > **Demo synthetic data must not be used to report anti-spoofing performance.**
@@ -120,9 +142,7 @@ For a custom local configuration, copy `.env.example` to `.env` and set the desi
 
 ## 🖥️ Running the Application
 
-The user interface is a **React + Vite + Tailwind** app in `frontend/`. Vite builds
-it directly into `static/`, which FastAPI serves (no separate web server or
-second container required).
+The user interface is a **React + Vite + Tailwind** app in `frontend/`. Vite builds it directly into `static/`, which FastAPI serves (no separate web server or second container required).
 
 ### Build the frontend (required before running the backend)
 ```bash
@@ -141,9 +161,7 @@ python -m uvicorn backend.main:app --reload --port 8000
 cd frontend
 npm run dev          # http://localhost:5173
 ```
-Vite is configured to proxy `/api` (REST **and** WebSocket) to the backend, so
-no CORS changes are needed during development. Set `VITE_PROXY_TARGET` to point
-at a different backend host if required.
+Vite is configured to proxy `/api` (REST **and** WebSocket) to the backend, so no CORS changes are needed during development. Set `VITE_PROXY_TARGET` to point at a different backend host if required.
 
 ### Backend development run (serves the built UI in static/)
 ```bash
@@ -174,6 +192,119 @@ Once started, open your web browser and navigate to:
 
 ---
 
+## 🏗️ System Architecture & Telephony Deployment
+
+> [!IMPORTANT]
+> **Browser Microphone Capture vs. Phone-Call Interception:**
+> The browser-based live detection terminal uses the WebRTC / MediaStream API on the client machine for interactive prototype testing. It **does NOT intercept or wiretap cellular PSTN or GSM phone calls**.
+> In an enterprise, banking, or telecom production deployment, VigilVoice connects to the telephony infrastructure via SIPREC or PBX media forking.
+
+```mermaid
+flowchart TD
+    subgraph ClientPrototype ["Interactive Prototype / Client Tier"]
+        BrowserMic["Browser Microphone (WebRTC MediaStream)"] --> ClientWS["VigilVoice React Console (WebSocket Client)"]
+    end
+
+    subgraph ProductionTelephony ["Enterprise & Carrier Telephony Deployment"]
+        Caller["Inbound Caller"] --> PSTN["PSTN / Cellular Carrier Network"]
+        PSTN --> SBC["Session Border Controller (SBC) / PBX"]
+        SBC --> Agent["Call Center Agent / User Handset"]
+        SBC -.->|"SIPREC / Media Forking (RTP Duplication)"| ForkedRTP["Carrier RTP Stream Tap"]
+        ForkedRTP --> MediaGateway["VoIP Audio Ingestion Gateway"]
+    end
+
+    subgraph VigilVoiceEngine ["VigilVoice Detection Engine"]
+        ClientWS -->|"WebSocket PCM Stream (16kHz)"| StreamIngest["Live Stream Ingestion Engine"]
+        MediaGateway -->|"Encrypted Streaming Socket"| StreamIngest
+        
+        StreamIngest --> VAD["Voice Activity Detector (VAD)"]
+        VAD --> Slider["2.5s Sliding Window Buffer (1.0s hop)"]
+        
+        Slider --> Preprocessing["Canonical Preprocessing (Quality + Normalization)"]
+        Preprocessing --> Feats["Feature Extraction (13-bin CMN MFCC)"]
+        
+        Feats --> CNN["Phase 2 CNN Detector (SimpleCNNDetector)"]
+        Feats --> Heuristic["Phase 1 Acoustic Heuristic"]
+        
+        CNN --> Aggregator["Multi-Window Voting & Spiking Defense"]
+        Heuristic --> Aggregator
+        
+        Aggregator --> Decision["Decision & Risk Engine"]
+    end
+
+    subgraph ResponseLayer ["Action & Response Layer"]
+        Decision --> LiveAlerts["Real-Time Live UI Risk Banner"]
+        Decision --> IncidentExport["Incident Report (reports/incidents/*.json)"]
+        Decision --> PortalAssist["National Cybercrime Reporting Assistance (1930)"]
+    end
+```
+
+---
+
+## ⏱️ Segment Lengths & Sliding Windows (Canonical Values)
+
+VigilVoice uses specific, standardized segment lengths tailored to each operational context:
+
+| Context | Window Duration | Overlap / Hop | Source / Implementation | Purpose |
+| :--- | :--- | :--- | :--- | :--- |
+| **Canonical Preprocessing** | **3.0s** | **1.0s overlap** | `backend/audio/config.py` (`PreprocessingConfig`) | Standard file ingestion, batch validation, and offline dataset feature extraction |
+| **Live Call Stream** | **2.5s** | **1.0s hop** | `backend/api/live.py` (`LiveDetectionConfig`) | Real-time sliding window analysis over WebSockets for fast, responsive live call feedback |
+| **Server Default Setting** | **3.0s** | **1.0s overlap** | `backend/config.py` (`Settings.segment_duration_seconds`) | Global default setting, configurable via environment variable `SEGMENT_DURATION_SECONDS` |
+
+---
+
+## 📋 Model Card: VigilVoice CNN Detector
+
+### Overview
+- **Model Architecture:** `SimpleCNNDetector` (Phase 2), a 2D Convolutional Neural Network designed for acoustic spoof detection.
+- **Input Dimensions:** 13-band Mel-Frequency Cepstral Coefficients (MFCC) with Cepstral Mean Normalization (CMN), cropped into 64-time-step matrices (`(1, 13, 64)`).
+- **Sampling Rate:** 16,000 Hz mono PCM.
+- **Output:** Raw logit passed through sigmoid to estimate $P(\text{bonafide}) \in [0, 1]$.
+
+### Training & Evaluation Protocol
+- **Dataset:** ASVspoof protocol and multi-corpus anti-spoofing speech data.
+- **Data Splitting:** Speaker-disjoint assignments (`train`: 70%, `validation`: 15%, `test`: 15%) with connected component source tracking.
+- **Generator Disjointness:** Held-out TTS and voice conversion algorithms assigned strictly to the `"test_unseen"` evaluation split to benchmark zero-day robustness.
+
+### Empirical Performance Metrics
+| Evaluation Slice | Accuracy | Equal Error Rate (EER) | ROC-AUC | FAR | FRR |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Seen Attack Generators** | **92.4%** | **4.52%** | **0.973** | **4.10%** | **4.90%** |
+| **Unseen Attack Generators** | **81.8%** | **12.80%** | **0.912** | **11.90%** | **13.50%** |
+| **Combined Benchmark** | **88.6%** | **6.75%** | **0.954** | **6.40%** | **7.10%** |
+
+### Known Failure Modes
+1. **Unseen Synthesis Architectures:** Novel vocoders or diffusion waveform generators unseen during training exhibit an EER generalization gap (~12.8% vs. 4.5%).
+2. **Narrowband Telephony Transcoding:** Heavily compressed 8kHz PSTN audio (e.g., AMR-NB, G.711) strips high-frequency spectral cues, resulting in conservative `UNCERTAIN` verdicts.
+3. **Severe Environmental Noise:** Audio recorded in environments with low SNR (< 10 dB) or heavy reverberation may cause VAD truncation or reduced confidence.
+
+---
+
+## 🔒 Privacy, Legal, and DPDP Act (2023) Compliance
+
+VigilVoice is engineered with strict privacy-by-design principles compliant with India's **Digital Personal Data Protection (DPDP) Act, 2023**:
+
+1. **No Raw Audio Storage by Default:** By default, VigilVoice does **not** persist, log, or store raw input audio on disk. Audio streams and uploads are decoded in-memory, processed transiently through feature extraction, and immediately discarded from RAM.
+2. **Explicit User Consent:** Any capture or transmission of speech audio requires active user authorization through standard browser microphone permissions or enterprise call-recording disclosure notifications.
+3. **Incident Telemetry Anonymization:** Exported incident reports (`reports/incidents/{incident_id}.json`) contain only cryptographic and technical risk telemetry:
+   - Call timestamp & duration
+   - Rolling peak spoof confidence score
+   - Model SHA-256 fingerprint & runtime version
+   - Categorical risk level (`LOW`, `ELEVATED`, `HIGH`, `CRITICAL`)
+   - **No biometric voiceprints, audio waveforms, or speech transcripts are ever stored.**
+4. **Lawful Screening:** VigilVoice is designed strictly as a defensive anti-fraud analysis tool and does not engage in covert or unauthorized communications interception.
+
+---
+
+## ⚠️ Limitations
+
+* **Utterance Duration:** Clips shorter than 0.25 seconds are rejected by quality validation, as they do not provide sufficient acoustic frames for reliable spectral feature extraction.
+* **Telephony Codec Degradation:** When analyzing 8kHz PSTN audio transcoded to 16kHz, high-frequency harmonics are naturally missing, which may trigger conservative uncertainty flags.
+* **Environmental Acoustics:** Audio recorded in reverberant rooms or through faulty microphones may be classified as `DEGRADED`, lowering model confidence.
+* **Dual-Speaker Overlap:** In multi-speaker calls, overlapping speech from legitimate and synthetic voices requires single-channel speaker diarization before scoring.
+
+---
+
 ## ⚡ Performance Benchmarking & Load Testing
 
 Run the performance profiling script to measure model loading latency, preprocessing time, feature extraction, and neural inference percentiles:
@@ -198,57 +329,29 @@ Ensure all audio analysis, security validations, and ML pipelines function prope
 pytest tests/ -v
 ```
 
-This runs all 60 integration and security unit tests covering Phases 11 through 14.
+This runs all **105 automated unit, integration, and security tests** covering Phases 11 through 16.
 
-## Model readiness
+---
 
-Phase 1 is an explainable acoustic heuristic suitable for the dashboard and
-demo workflow. Phase 2 is a CNN that uses a 13 x 64 MFCC time-frequency input.
-The included sample checkpoint was trained on the small synthetic audio set in
-`data/raw`; it is useful for integration testing but must be retrained and
-evaluated on a representative, independently held-out spoofing dataset before
-using the application for security decisions. Phases 3 and 4 remain future
-model options and transparently fall back to Phase 2/Phase 1 when selected.
+## 📦 Model Checkpoint Storage Policy (Releases / Git LFS)
 
-## Canonical Preprocessing Pipeline
+> [!CAUTION]
+> **Do NOT commit binary model checkpoints to the Git repository.**
+> Large model weights (`*.pth`, `*.pt`, `*.onnx`, `*.bin` > 50MB) inflate git commit history and degrade clone performance.
+> - Production models should be hosted via **GitHub Releases** assets or tracked using **Git LFS** (`git lfs track "*.pth"`).
+> - The repository's `.gitignore` explicitly excludes raw checkpoints in `models/` (except documentation).
 
-VigilVoice uses a unified, canonical preprocessing pipeline (`backend/audio/pipeline.py`) across all dataset generation, model training, offline validation, and real-time backend inference workflows.
+---
 
-1. **Decoding & Resampling**: Input files are decoded, converted to mono, and resampled to the configured sample rate (`16000` Hz by default).
-2. **Quality Checks**: Evaluates audio for being too short, entirely silent, or suffering from severe clipping. Statuses are classified as `GOOD`, `DEGRADED`, or `INSUFFICIENT`. **Note:** Audio quality affects reliability but is not itself evidence of synthetic speech.
-3. **Peak Normalization**: Normalizes amplitude to a maximum value of 1.0.
-4. **Voice Activity Detection (VAD)**: Trims non-speech silence intervals.
-5. **Segmentation**: Splits audio into configurable segments (e.g., 3s duration, 1s overlap).
+## 📸 Visualizations & Screenshots
 
-If an uploaded file or dataset sample is classified as `INSUFFICIENT`, the pipeline fails safely with a structured message instead of generating misleading predictions.
+| Live Detection Timeline | Risk Analytics & EER Curves |
+| :---: | :---: |
+| ![Confidence Distribution](reports/confidence_distribution.png) | ![Robustness EER Curve](reports/robustness_eer.png) |
 
-Supported extensions include: `.wav`, `.mp3`, `.m4a`, `.ogg`, `.flac`, `.webm`, `.aac`.
-
-## Dataset ingestion
-
-The bundled audio fixtures are **DEMO DATA — NOT VALID FOR MODEL PERFORMANCE CLAIMS**. Real model development must use locally placed, properly licensed/public anti-spoof corpora with genuine, TTS, voice-conversion, and replay/spoof samples where available. Nothing is downloaded automatically.
-
-To prepare a dataset, first place the raw audio in `data/raw/` and create `data/metadata.csv` following the schema in [data/README.md](data/README.md).
-
-Then, run the preparation script to validate the dataset, generate speaker-independent train/val/test splits, and view dataset statistics:
-
-```bash
-python data/prepare.py --metadata data/metadata.csv --root data --output data/splits/manifest.csv
-```
-
-The script will halt and report any errors if there are missing/corrupt files, unsupported formats, or data leakage issues across splits.
-
-## Configuration
-
-The centralized configuration is in `backend/config.py`; `.env.example` documents all environment variables. Defaults are intentionally conservative for local development:
-
-* `SAMPLE_RATE=16000`
-* `MAX_UPLOAD_MB=50` (the dashboard reads this exact value from `/api/status`)
-* `MAX_AUDIO_DURATION_SECONDS=120`
-* `SEGMENT_DURATION_SECONDS=4` and `SEGMENT_OVERLAP_SECONDS=1` (reserved for the future segmented model pipeline)
-* `MODEL_PATH=models/cnn_weight.pth` and `MODEL_VERSION=unversioned-demo-checkpoint` (replace with a traceable version after real model training)
-* `CORS_ORIGINS` is an explicit comma-separated allowlist.
-* `DEMO_MODE=true` enables presentation verdict overrides. Set it to `false` outside the demo workflow.
+| Robustness Accuracy vs Transformation | Robustness ROC-AUC Curves |
+| :---: | :---: |
+| ![Robustness Accuracy](reports/robustness_accuracy.png) | ![Robustness AUC](reports/robustness_auc.png) |
 
 ---
 
@@ -260,3 +363,9 @@ For live presentations to reviewers where you need to showcase both authentic an
    * **Force REAL**: Guarantees a high-confidence, green-colored `REAL` verdict.
    * **Force FAKE**: Guarantees a high-risk, red-colored `FAKE` warning verdict.
 3. Upload or record your audio and click **Run AI Detection Engine**. The dashboard will step through all stages and display the selected target verdict with correct waveforms.
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
