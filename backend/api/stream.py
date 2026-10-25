@@ -40,7 +40,7 @@ class StreamAnalyzer:
         self.buffer = self.buffer[self.hop_size:]
         self.total_processed_samples += self.hop_size
 
-    def process_window(self, audio_data: np.ndarray, phase: str = "phase2") -> dict:
+    def process_window(self, audio_data: np.ndarray, phase: str = "phase2", force_verdict: str = None) -> dict:
         """Runs the heavy ML inference pipeline on the window."""
         # 1. Very basic VAD (energy threshold) to skip silence
         rms_energy = np.sqrt(np.mean(audio_data**2))
@@ -52,15 +52,23 @@ class StreamAnalyzer:
         features = extract_acoustic_features(y_clean, sr=self.sample_rate)
         
         # 3. Model Inference
-        real_prob = run_ai_detection(features, phase=phase)
+        effective_phase = (phase or "phase1").lower().strip()
+        if effective_phase in ("phase3", "phase4"):
+            effective_phase = "phase2"
+        from backend.detection.detector import is_cnn_model_available
+        if effective_phase == "phase2" and not is_cnn_model_available():
+            effective_phase = "phase1"
+
+        effective_force = force_verdict if (force_verdict and settings.demo_mode) else None
+        real_prob = run_ai_detection(features, phase=effective_phase, force_verdict=effective_force)
         fake_prob = 1.0 - real_prob
         
-        # 4. Create Segment
+        # 4. Create Segment from unified classification thresholds
         start_time = self.total_processed_samples / self.sample_rate
         end_time = start_time + (self.chunk_size / self.sample_rate)
         
-        pred_label = "REAL" if real_prob >= 0.75 else "FAKE" if real_prob <= 0.40 else "UNCERTAIN"
-        conf = real_prob if pred_label == "REAL" else fake_prob if pred_label == "FAKE" else (1.0 - 2 * abs(real_prob - 0.5))
+        from backend.detection.decision import classify_score
+        pred_label, conf = classify_score(real_prob)
         
         seg = SegmentPrediction(
             segment_id=self.segment_counter,
@@ -103,6 +111,8 @@ class StreamAnalyzer:
         return {
             "status": "ANALYZED",
             "timestamp": start_time,
+            "phase_used": effective_phase,
+            "demo_override": bool(effective_force),
             "segment": seg.to_dict(),
             "risk_report": risk_report,
             "security_recommendation": security_rec,

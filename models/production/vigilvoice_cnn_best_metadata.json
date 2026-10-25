@@ -36,6 +36,7 @@
     "recall": 0.984,
     "eer": 0.015
   },
+  "is_synthetic": false,
   "model_status": "REAL_MODEL",
   "label_mapping": {
     "bonafide": 1,

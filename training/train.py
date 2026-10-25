@@ -195,7 +195,8 @@ def train_model(args):
             torch.save(model.state_dict(), best_model_path)
             metadata["best_epoch"] = epoch + 1
             metadata["best_metrics"] = metrics
-            metadata["model_status"] = "REAL_MODEL"
+            metadata["is_synthetic"] = bool(args.allow_synthetic)
+            metadata["model_status"] = "DEMO_MODEL" if args.allow_synthetic else "REAL_MODEL"
             metadata["label_mapping"] = {"bonafide": 1, "spoof": 0}
             import hashlib
             sha = hashlib.sha256()

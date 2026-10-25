@@ -1,27 +1,31 @@
+THRESHOLD_REAL = 0.75
+THRESHOLD_FAKE = 0.40
+
+
+def classify_score(real_score: float) -> tuple[str, float]:
+    """
+    Evaluates realness score (0.0 to 1.0) and assigns verdict and raw confidence.
+    Single source of truth for REAL/FAKE/UNCERTAIN classification thresholds.
+
+    - REAL: >= 0.75
+    - FAKE: <= 0.40
+    - UNCERTAIN: 0.40 < real_score < 0.75
+    """
+    if real_score >= THRESHOLD_REAL:
+        return "REAL", float(real_score)
+    elif real_score <= THRESHOLD_FAKE:
+        return "FAKE", float(1.0 - real_score)
+    else:
+        return "UNCERTAIN", float(1.0 - 2 * abs(real_score - 0.5))
+
+
 def make_decision(real_score: float) -> dict:
     """
     Evaluates the realness score (0.0 to 1.0) and assigns a verdict,
     confidence percentage, and risk level.
-    
-    Scores represent the probability that the audio is REAL.
-    - REAL: >= 0.75
-    - FAKE: <= 0.40
-    - UNCERTAIN: 0.40 < score < 0.75
     """
-    # 1. Determine Verdict and Confidence
-    if real_score >= 0.75:
-        verdict = "REAL"
-        # Confidence is relative to the REAL class
-        confidence = real_score
-    elif real_score <= 0.40:
-        verdict = "FAKE"
-        # Confidence is relative to the FAKE class
-        confidence = 1.0 - real_score
-    else:
-        verdict = "UNCERTAIN"
-        # For uncertain, confidence is the degree of uncertainty
-        # (closer to 0.5 means higher uncertainty, so we scale it)
-        confidence = 1.0 - 2 * abs(real_score - 0.5) # Higher value = more uncertain
+    # 1. Determine Verdict and Confidence from single source of truth
+    verdict, confidence = classify_score(real_score)
 
     # Convert confidence to percentage
     confidence_pct = float(round(confidence * 100, 2))

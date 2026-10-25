@@ -155,3 +155,210 @@ def test_inference_multi_crop_average_logits():
     preds = run_segment_detection([seg], phase="phase1")
     assert len(preds) == 1
     assert 0.0 <= preds[0].real_probability <= 1.0
+
+
+import io
+import json
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+from fastapi.testclient import TestClient
+from scipy.io import wavfile
+
+from backend.main import app
+from backend.config import settings
+from backend.detection.detector import (
+    run_phase1_stub_detection,
+    run_phase2_cnn_detection,
+    run_ai_detection,
+    _get_checkpoint_status,
+    reset_cached_model,
+)
+from backend.detection.decision import THRESHOLD_REAL, THRESHOLD_FAKE, classify_score
+from backend.api.live import LiveSession, LiveIncident, process_live_window
+
+
+def _make_dummy_wav_bytes(duration_sec: float = 1.0, sr: int = 16000) -> bytes:
+    t = np.linspace(0, duration_sec, int(sr * duration_sec), endpoint=False)
+    samples = (0.5 * np.sin(2 * np.pi * 440.0 * t) * 32767).astype(np.int16)
+    buf = io.BytesIO()
+    wavfile.write(buf, sr, samples)
+    return buf.getvalue()
+
+
+def test_demo_mode_false_ignores_force_verdict_detector_and_api():
+    """
+    Requirement 1:
+    Gate force_verdict: ignore force_verdict unless settings.demo_mode is True.
+    Test detector functions and API endpoint /api/detect with demo_mode False vs True.
+    """
+    sr = 16000
+    t = np.linspace(0, 1.0, int(sr * 1.0), endpoint=False)
+    y = (0.5 * np.sin(2 * np.pi * 440.0 * t)).astype(np.float32)
+    features = extract_acoustic_features(y, sr=sr)
+    seg = AudioSegment(
+        segment_id=0,
+        start_time=0.0,
+        end_time=1.0,
+        duration=1.0,
+        status="GOOD",
+        audio_data=y,
+    )
+
+    client = TestClient(app)
+    wav_bytes = _make_dummy_wav_bytes()
+
+    # 1. With demo_mode = False: force_verdict must be ignored
+    with patch.object(settings, "demo_mode", False):
+        score_p1 = run_phase1_stub_detection(features, force_verdict="real")
+        assert score_p1 < 0.50, f"force_verdict should be ignored when demo_mode=False, got {score_p1}"
+
+        preds = run_segment_detection([seg], phase="phase1", force_verdict="real")
+        assert len(preds) == 1
+        assert preds[0].real_probability < 0.50
+
+        # API level: sending force_verdict with demo_mode=False succeeds with 200 and ignores override
+        resp = client.post(
+            "/api/detect",
+            files={"file": ("test.wav", wav_bytes, "audio/wav")},
+            data={"phase": "phase1", "force_verdict": "real"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["demo_override"] is False
+        assert body["verdict"] in {"FAKE", "UNCERTAIN"}
+
+    # 2. With demo_mode = True: force_verdict is honored
+    with patch.object(settings, "demo_mode", True):
+        score_forced_real = run_phase1_stub_detection(features, force_verdict="real")
+        assert score_forced_real >= 0.75
+        score_forced_fake = run_phase1_stub_detection(features, force_verdict="fake")
+        assert score_forced_fake <= 0.40
+
+        preds_forced = run_segment_detection([seg], phase="phase1", force_verdict="real")
+        assert preds_forced[0].real_probability >= 0.75
+
+        resp_demo = client.post(
+            "/api/detect",
+            files={"file": ("test.wav", wav_bytes, "audio/wav")},
+            data={"phase": "phase1", "force_verdict": "real"},
+        )
+        assert resp_demo.status_code == 200
+        body_demo = resp_demo.json()
+        assert body_demo["demo_override"] is True
+        assert body_demo["verdict"] == "REAL"
+
+
+def test_is_synthetic_metadata_determines_model_status():
+    """
+    Requirement 4:
+    Model status: decide DEMO_MODEL vs REAL_MODEL from an explicit boolean `is_synthetic`
+    in the metadata JSON (not the substring 'DEMO'). Missing metadata -> DEMO_MODEL.
+    """
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        model_file = tmp_path / "model.pth"
+        meta_file = tmp_path / "model_metadata.json"
+
+        # Create dummy weights
+        torch.save({"dummy": torch.tensor([1.0])}, model_file)
+
+        # 1. is_synthetic: True -> DEMO_MODEL
+        meta_file.write_text(json.dumps({"is_synthetic": True}))
+        assert _get_checkpoint_status(model_file) == "DEMO_MODEL"
+
+        # 2. is_synthetic: False -> REAL_MODEL (even if name has DEMO)
+        meta_file.write_text(json.dumps({"is_synthetic": False, "dataset_identifier": "DEMO_DATASET"}))
+        assert _get_checkpoint_status(model_file) == "REAL_MODEL"
+
+        # 3. Missing metadata -> DEMO_MODEL
+        meta_file.unlink()
+        assert _get_checkpoint_status(model_file) == "DEMO_MODEL"
+
+
+def test_checksum_mismatch_triggers_model_integrity_failure_and_503():
+    """
+    Requirement:
+    Checksum mismatch -> MODEL_INTEGRITY_FAILURE and /api/ready returns 503.
+    """
+    client = TestClient(app)
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        model_file = tmp_path / "corrupted_model.pth"
+        meta_file = tmp_path / "corrupted_model_metadata.json"
+
+        # Write dummy model file and wrong sha256 in metadata
+        model_file.write_bytes(b"some model weights")
+        meta_file.write_text(json.dumps({
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "is_synthetic": False
+        }))
+
+        with patch.object(settings, "model_path", model_file):
+            reset_cached_model()
+            try:
+                status = _get_checkpoint_status(model_file)
+                assert status == "MODEL_INTEGRITY_FAILURE"
+
+                ready_resp = client.get("/api/ready")
+                assert ready_resp.status_code == 503
+                payload = ready_resp.json()
+                assert payload["ready"] is False
+                assert payload["model_status"] == "MODEL_INTEGRITY_FAILURE"
+            finally:
+                reset_cached_model()
+
+
+def test_effective_phase_reporting_and_demo_override():
+    """
+    Requirements 3 & 5:
+    Report effective phase in responses (phases 3 and 4 fall back to phase 2).
+    Add 'demo_override' to every detection response and to incident evidence JSON.
+    """
+    client = TestClient(app)
+    wav_bytes = _make_dummy_wav_bytes()
+
+    for requested_phase in ["phase3", "phase4"]:
+        resp = client.post(
+            "/api/detect",
+            files={"file": ("test.wav", wav_bytes, "audio/wav")},
+            data={"phase": requested_phase},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["phase_used"] == "phase2"
+        assert "demo_override" in body
+        assert isinstance(body["demo_override"], bool)
+
+
+def test_centralized_thresholds_and_blend_mode():
+    """
+    Requirements 6 & 7:
+    - Keep REAL/FAKE/UNCERTAIN thresholds in one place (decision.py).
+    - Add config blend_mode (cnn_only | blend), default cnn_only when status is REAL_MODEL.
+    - Heuristic must not override a CNN 'fake' verdict by default.
+    """
+    assert THRESHOLD_REAL == 0.75
+    assert THRESHOLD_FAKE == 0.40
+
+    v_real, c_real = classify_score(0.80)
+    assert v_real == "REAL"
+    assert c_real > 0
+
+    v_fake, c_fake = classify_score(0.30)
+    assert v_fake == "FAKE"
+    assert c_fake > 0
+
+    v_unc, _ = classify_score(0.55)
+    assert v_unc == "UNCERTAIN"
+
+    # Test blend_mode default resolution
+    with patch.object(settings, "blend_mode", None):
+        assert settings.resolve_blend_mode("REAL_MODEL") == "cnn_only"
+        assert settings.resolve_blend_mode("DEMO_MODEL") == "blend"
+
+    # Explicit override in config
+    with patch.object(settings, "blend_mode", "blend"):
+        assert settings.resolve_blend_mode("REAL_MODEL") == "blend"
+

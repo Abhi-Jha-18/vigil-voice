@@ -116,7 +116,7 @@ def _get_checkpoint_status(model_file: Path) -> str:
                 metadata = json.load(f)
 
                 # Check for recorded checksum to verify integrity
-                recorded_hash = metadata.get("model_sha256") or metadata.get("expected_sha256")
+                recorded_hash = metadata.get("model_sha256") or metadata.get("sha256") or metadata.get("expected_sha256")
                 if recorded_hash:
                     actual_hash = _compute_file_sha256(model_file)
                     if recorded_hash.lower() != actual_hash.lower():
@@ -125,17 +125,17 @@ def _get_checkpoint_status(model_file: Path) -> str:
 
                 if metadata.get("dataset_identifier") == "REAL_DATASET_REQUIRED":
                     return "MODEL_UNAVAILABLE"
-                if "DEMO" in str(metadata.get("dataset_identifier", "")).upper():
-                    return "DEMO_MODEL"
-                return "REAL_MODEL"
+
+                # Explicit boolean is_synthetic: True -> DEMO_MODEL, False -> REAL_MODEL
+                if "is_synthetic" in metadata:
+                    return "DEMO_MODEL" if bool(metadata.get("is_synthetic")) else "REAL_MODEL"
+
+                return "DEMO_MODEL"
         except Exception as e:
             print(f"[Detector] Metadata parsing error: {e}")
             pass
 
-    # If no metadata file, check if it's the old demo checkpoint by path name
-    if "demo" in model_file.name.lower():
-        return "DEMO_MODEL"
-    # Legacy unversioned checkpoints are considered demo
+    # Missing metadata -> DEMO_MODEL
     return "DEMO_MODEL"
 
 
@@ -149,7 +149,7 @@ def _load_cnn_model() -> tuple:
     if _cnn_status is not None:
         return _cnn_model, _cnn_status
 
-    model_file = MODEL_PATH
+    model_file = settings.model_path
     if not model_file.is_file():
         print(f"[Detector] Phase 2 model not found at '{model_file}' — "
               f"falling back to Phase 1 heuristic.")
@@ -315,7 +315,7 @@ def run_phase1_stub_detection(features: dict, force_verdict: str = None) -> floa
 
     If force_verdict is set, returns an engineered score for that outcome.
     """
-    if force_verdict:
+    if force_verdict and settings.demo_mode:
         force_verdict = force_verdict.lower()
         if force_verdict == "real":
             return float(np.random.uniform(0.82, 0.98))
@@ -394,7 +394,7 @@ def run_phase2_cnn_detection(features: dict, force_verdict: str = None) -> float
     """
     from backend.audio.features import mfcc_crops
 
-    if force_verdict:
+    if force_verdict and settings.demo_mode:
         return run_phase1_stub_detection(features, force_verdict)
 
     model, status = _load_cnn_model()
@@ -420,8 +420,12 @@ def run_phase2_cnn_detection(features: dict, force_verdict: str = None) -> float
             cnn_score = float(torch.sigmoid(mean_logit).cpu().numpy())
             cnn_score = float(np.clip(cnn_score, 0.01, 0.99))
 
-        heuristic_score = run_phase1_stub_detection(features)
-        score = blend_cnn_and_heuristic(cnn_score, heuristic_score)
+        effective_blend = settings.resolve_blend_mode(status)
+        if effective_blend == "cnn_only":
+            score = cnn_score
+        else:
+            heuristic_score = run_phase1_stub_detection(features)
+            score = blend_cnn_and_heuristic(cnn_score, heuristic_score)
 
         return float(np.clip(score, 0.01, 0.99))
     except Exception as e:
@@ -437,17 +441,16 @@ def run_ai_detection(features: dict, phase: str = "phase1",
     Multi-phase detection interface.
     Returns the REAL probability score (0.0 – 1.0).
     """
-    if phase == "phase2":
-        return run_phase2_cnn_detection(features, force_verdict)
-    elif phase == "phase3":
-        print("[Detector] Phase 3 CNN-LSTM not yet trained — using Phase 2 fallback.")
-        return run_phase2_cnn_detection(features, force_verdict)
-    elif phase == "phase4":
-        print("[Detector] Phase 4 Wav2Vec not yet available — using Phase 2 fallback.")
-        return run_phase2_cnn_detection(features, force_verdict)
+    use_force_verdict = force_verdict if (force_verdict and settings.demo_mode) else None
+    effective_phase = (phase or "phase1").lower().strip()
+    if effective_phase in ("phase3", "phase4"):
+        effective_phase = "phase2"
+
+    if effective_phase == "phase2":
+        return run_phase2_cnn_detection(features, use_force_verdict)
     else:
         # phase1 or default
-        return run_phase1_stub_detection(features, force_verdict)
+        return run_phase1_stub_detection(features, use_force_verdict)
 
 
 def run_segment_detection(segments: list, phase: str = "phase1", force_verdict: str = None) -> list:
@@ -457,6 +460,7 @@ def run_segment_detection(segments: list, phase: str = "phase1", force_verdict: 
     """
     import librosa
     from backend.detection.aggregator import SegmentPrediction
+    from backend.detection.decision import classify_score
     from backend.audio.features import _cmn, mfcc_crops, N_FFT, HOP_LENGTH, N_MELS
     from backend.config import settings as _settings
 
@@ -464,7 +468,12 @@ def run_segment_detection(segments: list, phase: str = "phase1", force_verdict: 
         return []
 
     predictions = []
-    use_cnn = phase in ("phase2", "phase3", "phase4") and not force_verdict
+    use_force_verdict = force_verdict if (force_verdict and _settings.demo_mode) else None
+    effective_phase = (phase or "phase1").lower().strip()
+    if effective_phase in ("phase3", "phase4"):
+        effective_phase = "phase2"
+
+    use_cnn = (effective_phase == "phase2") and not use_force_verdict
     model, status = (_load_cnn_model() if use_cnn else (None, None))
     cnn_ready = use_cnn and status in ("REAL_MODEL", "DEMO_MODEL") and model is not None
 
@@ -502,8 +511,8 @@ def run_segment_detection(segments: list, phase: str = "phase1", force_verdict: 
         for m, sc in zip(raw_mfccs, sc_means)
     ]
 
-    if force_verdict:
-        real_probs = [run_phase1_stub_detection({}, force_verdict) for _ in segments]
+    if use_force_verdict:
+        real_probs = [run_phase1_stub_detection({}, use_force_verdict) for _ in segments]
     elif cnn_ready:
         segment_crop_counts = []
         all_crops_list = []
@@ -527,23 +536,21 @@ def run_segment_detection(segments: list, phase: str = "phase1", force_verdict: 
             cnn_probs.append(float(np.clip(p, 0.01, 0.99)))
             offset += count
 
-        real_probs = blend_cnn_and_heuristic(np.array(cnn_probs, dtype=np.float64), np.array(heur_probs, dtype=np.float64)).tolist()
+        effective_blend = _settings.resolve_blend_mode(status)
+        if effective_blend == "cnn_only":
+            real_probs = cnn_probs
+        else:
+            real_probs = blend_cnn_and_heuristic(
+                np.array(cnn_probs, dtype=np.float64),
+                np.array(heur_probs, dtype=np.float64)
+            ).tolist()
     else:
         real_probs = heur_probs
 
     for seg, real_prob in zip(segments, real_probs):
         real_prob = float(real_prob)
         fake_prob = 1.0 - real_prob
-
-        if real_prob >= 0.75:
-            pred_label = "REAL"
-            conf = real_prob
-        elif real_prob <= 0.40:
-            pred_label = "FAKE"
-            conf = fake_prob
-        else:
-            pred_label = "UNCERTAIN"
-            conf = 1.0 - 2 * abs(real_prob - 0.5)
+        pred_label, conf = classify_score(real_prob)
 
         predictions.append(SegmentPrediction(
             segment_id=seg.segment_id,

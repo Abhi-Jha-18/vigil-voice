@@ -47,7 +47,7 @@ ALLOWED_AUDIO_MIME_TYPES = frozenset({
 })
 
 
-@dataclass(frozen=True)
+@dataclass
 class Settings:
     environment: str
     host: str
@@ -75,6 +75,7 @@ class Settings:
     live_min_suspicious_windows: int
     live_max_session_seconds: int
     live_max_buffer_mb: float
+    blend_mode: str | None = None
 
     @property
     def is_production(self) -> bool:
@@ -92,6 +93,13 @@ class Settings:
     def allowed_mime_types(self) -> frozenset[str]:
         return ALLOWED_AUDIO_MIME_TYPES
 
+    def resolve_blend_mode(self, model_status: str | None = None) -> str:
+        if self.blend_mode in ("cnn_only", "blend"):
+            return self.blend_mode
+        if model_status == "REAL_MODEL":
+            return "cnn_only"
+        return "blend"
+
     def public_dict(self) -> dict[str, object]:
         """Return non-secret settings safe to expose through the status endpoint."""
         return {
@@ -107,6 +115,7 @@ class Settings:
             "model_version": self.model_version,
             "cors_origins": list(self.cors_origins),
             "demo_mode": self.demo_mode,
+            "blend_mode": self.blend_mode,
             "live_window_seconds": self.live_window_seconds,
             "live_hop_seconds": self.live_hop_seconds,
             "live_high_risk_threshold": self.live_high_risk_threshold,
@@ -129,6 +138,11 @@ def _resolve_model_path() -> Path:
 
 def load_settings() -> Settings:
     env = os.getenv("ENVIRONMENT", "development").strip().lower()
+    raw_blend = os.getenv("BLEND_MODE")
+    blend_mode = raw_blend.strip().lower() if raw_blend else None
+    if blend_mode and blend_mode not in ("cnn_only", "blend"):
+        blend_mode = None
+
     settings = Settings(
         environment=env,
         host=os.getenv("HOST", "127.0.0.1"),
@@ -145,7 +159,7 @@ def load_settings() -> Settings:
         model_path=_resolve_model_path(),
         model_version=os.getenv("MODEL_VERSION", "v1.0-production"),
         cors_origins=_as_origins(os.getenv("CORS_ORIGINS"), env),
-        demo_mode=_as_bool(os.getenv("DEMO_MODE"), env != "production"),
+        demo_mode=_as_bool(os.getenv("DEMO_MODE"), False),
         vad_top_db=int(os.getenv("VAD_TOP_DB", "30")),
         # Phase 15 settings
         live_sample_rate=int(os.getenv("LIVE_AUDIO_SAMPLE_RATE", "16000")),
@@ -156,6 +170,7 @@ def load_settings() -> Settings:
         live_min_suspicious_windows=int(os.getenv("LIVE_MIN_SUSPICIOUS_WINDOWS", "2")),
         live_max_session_seconds=int(os.getenv("LIVE_MAX_SESSION_SECONDS", "3600")),
         live_max_buffer_mb=float(os.getenv("LIVE_MAX_BUFFER_MB", "10.0")),
+        blend_mode=blend_mode,
     )
     if settings.sample_rate <= 0 or settings.max_upload_mb <= 0:
         raise ValueError("SAMPLE_RATE and MAX_UPLOAD_MB must be positive.")

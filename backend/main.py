@@ -391,10 +391,11 @@ async def detect_audio(
         
     if force_verdict:
         if not settings.demo_mode:
-            raise HTTPException(status_code=403, detail="Demo verdict overrides are disabled in production.")
-        force_verdict = force_verdict.lower().strip()
-        if force_verdict not in VALID_DEMO_VERDICTS:
-            raise HTTPException(status_code=422, detail="Invalid demo verdict override.")
+            force_verdict = None
+        else:
+            force_verdict = force_verdict.lower().strip()
+            if force_verdict not in VALID_DEMO_VERDICTS:
+                raise HTTPException(status_code=422, detail="Invalid demo verdict override.")
 
     # 2. Validate Filename & Extension (Path Traversal Protection)
     safe_name = sanitize_filename(file.filename)
@@ -505,7 +506,13 @@ async def _run_analysis_pipeline(temp_path: str, phase: str, force_verdict: Opti
         from backend.detection.explainability import generate_evidence
         from backend.detection.recommendations import get_recommendation
         
-        segment_predictions = run_segment_detection(preprocessing_result.segments, phase=phase, force_verdict=force_verdict)
+        effective_phase = phase.lower().strip() if phase else "phase1"
+        if effective_phase in ("phase3", "phase4"):
+            effective_phase = "phase2"
+        if effective_phase == "phase2" and not is_cnn_model_available():
+            effective_phase = "phase1"
+
+        segment_predictions = run_segment_detection(preprocessing_result.segments, phase=effective_phase, force_verdict=force_verdict)
         agg_strategy = os.getenv("AGGREGATION_STRATEGY", "robust_risk")
         aggregation = aggregate_predictions(segment_predictions, strategy=agg_strategy)
         real_score = aggregation.overall_probability
@@ -539,9 +546,10 @@ async def _run_analysis_pipeline(temp_path: str, phase: str, force_verdict: Opti
         return {
             "success": True,
             "filename": filename,
-            "phase_used": phase,
-            "cnn_model_active": (phase != "phase1") and is_cnn_model_available(),
+            "phase_used": effective_phase,
+            "cnn_model_active": (effective_phase != "phase1") and is_cnn_model_available(),
             "model_status": get_model_status(),
+            "demo_override": bool(force_verdict and settings.demo_mode),
             "processing_time_ms": processing_time_ms,
             "verdict": decision["verdict"],
             "confidence": decision["confidence"],

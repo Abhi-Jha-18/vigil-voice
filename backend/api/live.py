@@ -102,6 +102,7 @@ class LiveIncident:
     social_engineering_indicators: List[str]
     disclaimer: str
     official_reporting_resources: dict
+    demo_override: bool = False
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -126,6 +127,7 @@ class LiveSession:
         self.current_risk_score = 0.0
         self.incident: Optional[LiveIncident] = None
         self.social_engineering_flags: List[str] = []
+        self.has_demo_override: bool = False
 
     def is_expired(self) -> bool:
         return (time.time() - self.created_at) > settings.live_max_session_seconds
@@ -184,11 +186,15 @@ session_manager = LiveSessionManager()
 
 # ── Rolling Risk Aggregator & Window Inference ─────────────────────────────────
 
-def process_live_window(session: LiveSession, window_audio: np.ndarray) -> dict:
+def process_live_window(session: LiveSession, window_audio: np.ndarray, force_verdict: str = None) -> dict:
     """
     Analyzes a 2.5s audio window and updates rolling call-level risk state.
     Implements single-spike false alarm protection.
     """
+    effective_force = force_verdict if (force_verdict and settings.demo_mode) else None
+    if effective_force:
+        session.has_demo_override = True
+
     sr = session.sample_rate
     start_sec = session.total_processed_samples / sr
     end_sec = start_sec + (session.window_samples / sr)
@@ -220,7 +226,8 @@ def process_live_window(session: LiveSession, window_audio: np.ndarray) -> dict:
                 "risk_score": session.current_risk_score,
                 "potential_spoof_detected": session.current_risk_level == "HIGH_SPOOF_RISK"
             },
-            "incident_created": session.incident is not None
+            "incident_created": session.incident is not None,
+            "demo_override": bool(effective_force)
         }
 
     # 2. Preprocess and Extract Features (MFCC-only — live path must stay < hop interval)
@@ -228,16 +235,28 @@ def process_live_window(session: LiveSession, window_audio: np.ndarray) -> dict:
     mfcc = extract_mfcc_for_model(y_norm, sr=sr)
 
     # 3. Model Inference (Guarded). The CNN emits logits; convert with sigmoid.
-    model, status = _load_cnn_model()
-    if status in ("REAL_MODEL", "DEMO_MODEL") and model is not None:
-        inp_tensor = torch.from_numpy(np.ascontiguousarray(mfcc, dtype=np.float32)).unsqueeze(0).unsqueeze(0)
-        with torch.inference_mode():
-            logit = model(inp_tensor).reshape(-1)[0]
-            cnn_prob = float(torch.sigmoid(logit).cpu())
-        heur_prob = heuristic_score_from_mfcc(mfcc)
-        real_prob = float(blend_cnn_and_heuristic(cnn_prob, heur_prob))
+    if effective_force:
+        if effective_force == "real":
+            real_prob = float(np.random.uniform(0.85, 0.98))
+        elif effective_force == "fake":
+            real_prob = float(np.random.uniform(0.02, 0.15))
+        else:
+            real_prob = float(np.random.uniform(0.45, 0.65))
     else:
-        real_prob = heuristic_score_from_mfcc(mfcc)
+        model, status = _load_cnn_model()
+        if status in ("REAL_MODEL", "DEMO_MODEL") and model is not None:
+            inp_tensor = torch.from_numpy(np.ascontiguousarray(mfcc, dtype=np.float32)).unsqueeze(0).unsqueeze(0)
+            with torch.inference_mode():
+                logit = model(inp_tensor).reshape(-1)[0]
+                cnn_prob = float(torch.sigmoid(logit).cpu())
+            effective_blend = settings.resolve_blend_mode(status)
+            if effective_blend == "cnn_only":
+                real_prob = cnn_prob
+            else:
+                heur_prob = heuristic_score_from_mfcc(mfcc)
+                real_prob = float(blend_cnn_and_heuristic(cnn_prob, heur_prob))
+        else:
+            real_prob = heuristic_score_from_mfcc(mfcc)
     fake_prob = float(1.0 - real_prob)
     risk_score = float(np.clip(fake_prob * 100.0, 0.0, 100.0))
     is_suspicious = fake_prob >= settings.live_suspicious_threshold
@@ -309,7 +328,8 @@ def process_live_window(session: LiveSession, window_audio: np.ndarray) -> dict:
             timeline=[asdict(w) for w in session.all_windows[-20:]],
             social_engineering_indicators=session.social_engineering_flags,
             disclaimer="Detection is probabilistic and indicates acoustic anomalies associated with synthetic speech. VigilVoice does not make legal accusations or automatically file reports.",
-            official_reporting_resources=OFFICIAL_REPORTING_RESOURCES
+            official_reporting_resources=OFFICIAL_REPORTING_RESOURCES,
+            demo_override=session.has_demo_override
         )
         logger.warning(f"Live Call Incident {incident_id} created for session {session.session_id}")
 
@@ -323,7 +343,8 @@ def process_live_window(session: LiveSession, window_audio: np.ndarray) -> dict:
             "risk_score": session.current_risk_score,
             "potential_spoof_detected": session.current_risk_level == "HIGH_SPOOF_RISK"
         },
-        "incident": session.incident.to_dict() if session.incident else None
+        "incident": session.incident.to_dict() if session.incident else None,
+        "demo_override": bool(effective_force)
     }
 
 
@@ -412,7 +433,8 @@ async def generate_incident_evidence_report(session_id: str):
             timeline=[asdict(w) for w in session.all_windows[-25:]],
             social_engineering_indicators=session.social_engineering_flags,
             disclaimer="Detection is probabilistic and indicates acoustic anomalies associated with synthetic speech. VigilVoice does not make legal accusations or automatically file reports.",
-            official_reporting_resources=OFFICIAL_REPORTING_RESOURCES
+            official_reporting_resources=OFFICIAL_REPORTING_RESOURCES,
+            demo_override=session.has_demo_override
         )
 
     incident_dir = PROJECT_ROOT / "reports" / "incidents"

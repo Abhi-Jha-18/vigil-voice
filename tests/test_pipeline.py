@@ -135,11 +135,14 @@ def test_full_pipeline():
         assert 0.0 <= score_default <= 1.0, f"AI score {score_default} out of range [0, 1]."
         
         # Test overrides
-        score_real = run_ai_detection(features, phase="phase1", force_verdict="real")
-        assert score_real >= 0.75, "Force REAL override failed."
-        
-        score_fake = run_ai_detection(features, phase="phase1", force_verdict="fake")
-        assert score_fake <= 0.40, "Force FAKE override failed."
+        from unittest.mock import patch
+        from backend.config import settings
+        with patch.object(settings, "demo_mode", True):
+            score_real = run_ai_detection(features, phase="phase1", force_verdict="real")
+            assert score_real >= 0.75, "Force REAL override failed."
+            
+            score_fake = run_ai_detection(features, phase="phase1", force_verdict="fake")
+            assert score_fake <= 0.40, "Force FAKE override failed."
         print("[OK] AI Detection Engine passed.")
 
         # 6. Decision Engine Test
