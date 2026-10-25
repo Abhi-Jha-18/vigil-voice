@@ -1,0 +1,62 @@
+{
+  "timestamp": "20261026_025207",
+  "seed": 42,
+  "epochs": 3,
+  "batch_size": 16,
+  "learning_rate": 0.001,
+  "manifest_path": "data\\splits\\manifest.csv",
+  "preprocessing_config": {
+    "sample_rate": 16000,
+    "channels": 1,
+    "normalization_method": "peak",
+    "min_audio_duration_seconds": 0.25,
+    "max_audio_duration_seconds": 120.0,
+    "min_speech_duration_seconds": 0.25,
+    "vad_top_db": 30,
+    "segment_duration_seconds": 3.0,
+    "segment_overlap_seconds": 1.0,
+    "max_segments": 10,
+    "supported_extensions": [
+      ".wav",
+      ".mp3",
+      ".m4a",
+      ".ogg",
+      ".flac",
+      ".webm",
+      ".aac"
+    ]
+  },
+  "model_architecture": "SimpleCNNDetector",
+  "dataset_identifier": "ASVspoof2019_LA",
+  "dataset_sources": [
+    "ASVspoof2019_LA"
+  ],
+  "is_synthetic": false,
+  "model_status": "REAL_MODEL",
+  "best_epoch": 3,
+  "best_metrics": {
+    "accuracy": 0.7261146496815286,
+    "precision": 0.7666666666666667,
+    "recall": 0.7159533073929961,
+    "f1": 0.7404426559356138,
+    "far": 0.2616822429906542,
+    "frr": 0.2840466926070039,
+    "roc_auc": 0.7879559256700244,
+    "eer": 0.28221026219135237,
+    "eer_threshold": -0.014644749462604523
+  },
+  "temperature": 0.5939,
+  "threshold_real": 0.785,
+  "threshold_fake": 0.251,
+  "calibration": {
+    "temperature": 0.5939,
+    "target_far": 0.05,
+    "threshold_real": 0.785,
+    "threshold_fake": 0.251
+  },
+  "label_mapping": {
+    "bonafide": 1,
+    "spoof": 0
+  },
+  "model_sha256": "b3cb156925bd1afd02358a7f120e4ed56d53a3615d810970ec5f08d78ed75cc3"
+}
