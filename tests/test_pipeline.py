@@ -137,14 +137,9 @@ def test_full_pipeline(tmp_path: Path):
     assert decision_fake["risk_level"] in ["HIGH RISK", "CRITICAL RISK"], "Expected high/critical risk for FAKE."
 
 
-def test_fixed_real_fake_auc_regression_gate():
-    """
-    Fixed real/fake audio fixture with minimum-AUC regression gate.
-    Evaluates acoustic discrimination between dynamic/natural speech (real)
-    and static monotone/flat vocoder signals (fake).
-    """
-    from sklearn.metrics import roc_auc_score
-
+@pytest.fixture(scope="module")
+def fixed_real_fake_scores():
+    """Small deterministic fixture for the acoustic-heuristic regression gate."""
     labels = []
     scores = []
     sr = 16000
@@ -169,6 +164,14 @@ def test_fixed_real_fake_auc_regression_gate():
         labels.append(0)
         scores.append(score)
 
+    return labels, scores
+
+
+def test_fixed_real_fake_auc_regression_gate(fixed_real_fake_scores):
+    """Require real-labeled fixture signals to rank above fake-labeled signals."""
+    from sklearn.metrics import roc_auc_score
+
+    labels, scores = fixed_real_fake_scores
     auc = float(roc_auc_score(labels, scores))
-    # Regression gate: AUC must be at least 0.85
+    # Synthetic regression signals only; this is not a model performance benchmark.
     assert auc >= 0.85, f"Regression gate failure: AUC {auc:.4f} is below 0.85 threshold"

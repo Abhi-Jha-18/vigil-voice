@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/Abhi-Jha-18/vigil-voice/actions/workflows/ci.yml/badge.svg)](https://github.com/Abhi-Jha-18/vigil-voice/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python: 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3119/)
+[![Python: 3.11.x](https://img.shields.io/badge/python-3.11.x-blue.svg)](https://www.python.org/downloads/)
 
 VigilVoice is an advanced, real-time audio analysis and security engine designed to detect synthetic voice clones, AI-generated speech, and audio spoofing attacks. Developed as an enterprise-grade defense prototype for Smart India Hackathon (SIH) cybersecurity challenges.
 
@@ -10,7 +10,7 @@ VigilVoice is an advanced, real-time audio analysis and security engine designed
 
 ## 🚀 Key Features
 
-* **Dual Capture & Live Call Terminal**: Upload audio files, record snippets, or initiate real-time browser-based live call monitoring via WebSocket/WebRTC audio capture.
+* **Dual Capture & Live Microphone Terminal**: Upload audio files, record snippets, or stream browser microphone audio over a WebSocket for real-time analysis.
 * **Real-Time Sliding Window Spoof Detection**: Evaluates incoming live voice in 2.5s sliding windows (1.0s hop) with rolling multi-window voting and single-spike false alarm protection.
 * **Fraud Incident Response & Evidence Export**: Automatically tracks suspicious call episodes, aggregates technical metadata (duration, peak spoof score, model SHA-256), and exports structured evidence JSON (`reports/incidents/{incident_id}.json`).
 * **Take Action / Official Reporting Center**: Direct navigation assistance to official Government of India cybercrime portals (CyberCrime Portal, Chakshu, NCRP Suspect Report, National Helpline 1930).
@@ -49,7 +49,7 @@ VigilVoice/
 │       └── audio_utils.py     # Upload and cache file helper utilities
 │
 ├── training/
-│   ├── prepare_dataset.py     # Advanced dataset validation and split generation pipeline
+│   ├── prepare_dataset.py     # Report-generating variant of the dataset preparation CLI
 │   ├── benchmark.py           # Latency benchmarking & performance profiling suite
 │   ├── load_test.py           # Concurrency and endpoint stress testing tool
 │   ├── train.py               # Production CNN training loop with class imbalance weighting
@@ -64,12 +64,12 @@ VigilVoice/
 │   └── README.md              # Checkpoint repository details and LFS instructions
 │
 ├── data/
-│   ├── prepare.py             # CLI dataset preparation script for validation & splits
+│   ├── prepare.py             # Canonical CLI for dataset validation & split generation
 │   ├── metadata.csv           # File labels indexing spreadsheet
 │   ├── raw/                   # Unprocessed audio samples (fixtures/real data)
 │   └── splits/                # Generated split manifests (manifest.csv)
 │
-├── tests/                     # Automated test suite (Phases 11–16, 105 automated tests)
+├── tests/                     # Automated suite (106 tests, including Phases 11–16)
 │
 ├── frontend/                  # React + Vite + Tailwind frontend (source)
 │   ├── src/
@@ -89,7 +89,7 @@ VigilVoice/
 │   └── workflows/
 │       └── ci.yml             # GitHub Actions CI workflow (tests & frontend build)
 │
-├── requirements.txt           # Python dependencies pinned for Python 3.11
+├── requirements.txt           # Python dependencies pinned for Python 3.11.x
 ├── LICENSE                    # MIT License
 ├── pytest.ini                 # Pytest configuration
 ├── conftest.py                # Pytest root configuration
@@ -100,7 +100,7 @@ VigilVoice/
 
 ## 🛠️ Installation & Setup
 
-1. **Prerequisites**: Install **Python 3.11** (Python 3.11.x is required for PyTorch CPU wheel and audio library stability; do not use Python 3.12 or 3.13) and **Node.js 18+**.
+1. **Prerequisites**: Install **Python 3.11.x only** (the pinned PyTorch CPU and audio stack is tested on 3.11, not 3.12 or 3.13) and **Node.js 18+**.
 2. **Clone the repository** and navigate to the project directory:
    ```bash
    git clone https://github.com/Abhi-Jha-18/vigil-voice.git
@@ -127,6 +127,16 @@ pip install -r requirements.txt
 ```
 
 `requirements.txt` pins the CPU-only PyTorch wheel from the official PyTorch CPU index. It is intentionally a CPU development environment; CUDA is not installed or assumed.
+
+### Dataset preparation (optional)
+
+After supplying licensed audio and completing `data/metadata.csv`, run the canonical preparation CLI from the repository root:
+
+```bash
+python data/prepare.py
+```
+
+This validates the dataset and writes `data/splits/manifest.csv`. The tree also includes `training/prepare_dataset.py`, a variant that additionally writes JSON validation and dataset-statistics reports.
 
 ### Windows audio decoding
 
@@ -170,7 +180,7 @@ python -m uvicorn backend.main:app --reload --port 8000
 
 ### Production Hardened Run
 ```bash
-ENVIRONMENT=production python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 4
+ENVIRONMENT=production python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1
 ```
 
 ### Docker Container Deployment
@@ -196,16 +206,16 @@ Once started, open your web browser and navigate to:
 
 > [!IMPORTANT]
 > **Browser Microphone Capture vs. Phone-Call Interception:**
-> The browser-based live detection terminal uses the WebRTC / MediaStream API on the client machine for interactive prototype testing. It **does NOT intercept or wiretap cellular PSTN or GSM phone calls**.
-> In an enterprise, banking, or telecom production deployment, VigilVoice connects to the telephony infrastructure via SIPREC or PBX media forking.
+> The live terminal captures the client's microphone with `getUserMedia` / Web Audio APIs. It **does not intercept or wiretap cellular, PSTN, or GSM phone calls**.
+> The telephony path below is a **reference deployment**, not a bundled SIPREC/PBX connector. A production integrator must obtain lawful consent, fork media at an SBC/PBX, and adapt RTP to the 16 kHz mono float32 PCM WebSocket ingested by VigilVoice.
 
 ```mermaid
 flowchart TD
     subgraph ClientPrototype ["Interactive Prototype / Client Tier"]
-        BrowserMic["Browser Microphone (WebRTC MediaStream)"] --> ClientWS["VigilVoice React Console (WebSocket Client)"]
+        BrowserMic["Browser Microphone (getUserMedia / Web Audio)"] --> ClientWS["VigilVoice React Console (WebSocket Client)"]
     end
 
-    subgraph ProductionTelephony ["Enterprise & Carrier Telephony Deployment"]
+    subgraph ProductionTelephony ["Reference Telephony Integration (external adapters required)"]
         Caller["Inbound Caller"] --> PSTN["PSTN / Cellular Carrier Network"]
         PSTN --> SBC["Session Border Controller (SBC) / PBX"]
         SBC --> Agent["Call Center Agent / User Handset"]
@@ -215,7 +225,7 @@ flowchart TD
 
     subgraph VigilVoiceEngine ["VigilVoice Detection Engine"]
         ClientWS -->|"WebSocket PCM Stream (16kHz)"| StreamIngest["Live Stream Ingestion Engine"]
-        MediaGateway -->|"Encrypted Streaming Socket"| StreamIngest
+        MediaGateway -->|"External adapter: RTP to 16 kHz mono float32 PCM + WSS"| StreamIngest
         
         StreamIngest --> VAD["Voice Activity Detector (VAD)"]
         VAD --> Slider["2.5s Sliding Window Buffer (1.0s hop)"]
@@ -247,61 +257,63 @@ VigilVoice uses specific, standardized segment lengths tailored to each operatio
 
 | Context | Window Duration | Overlap / Hop | Source / Implementation | Purpose |
 | :--- | :--- | :--- | :--- | :--- |
-| **Canonical Preprocessing** | **3.0s** | **1.0s overlap** | `backend/audio/config.py` (`PreprocessingConfig`) | Standard file ingestion, batch validation, and offline dataset feature extraction |
-| **Live Call Stream** | **2.5s** | **1.0s hop** | `backend/api/live.py` (`LiveDetectionConfig`) | Real-time sliding window analysis over WebSockets for fast, responsive live call feedback |
-| **Server Default Setting** | **3.0s** | **1.0s overlap** | `backend/config.py` (`Settings.segment_duration_seconds`) | Global default setting, configurable via environment variable `SEGMENT_DURATION_SECONDS` |
+| **Canonical Preprocessing** | **3.0 s** | **1.0 s overlap (2.0 s hop)** | `backend/audio/config.py` (`PreprocessingConfig`) | File ingestion, training, validation, and offline feature extraction |
+| **Server Configuration Value** | **4.0 s** | **1.0 s overlap** | `backend/config.py` (`load_settings`) | Default returned by `/api/status`; configurable with `SEGMENT_DURATION_SECONDS`, but does not override the canonical config above |
+| **Live Microphone Stream** | **2.5 s** | **1.0 s hop (1.5 s overlap)** | `backend/config.py` and `backend/api/live.py` (`LiveSession`) | Real-time sliding-window analysis over WebSockets |
 
 ---
 
 ## 📋 Model Card: VigilVoice CNN Detector
 
-### Overview
-- **Model Architecture:** `SimpleCNNDetector` (Phase 2), a 2D Convolutional Neural Network designed for acoustic spoof detection.
-- **Input Dimensions:** 13-band Mel-Frequency Cepstral Coefficients (MFCC) with Cepstral Mean Normalization (CMN), cropped into 64-time-step matrices (`(1, 13, 64)`).
-- **Sampling Rate:** 16,000 Hz mono PCM.
-- **Output:** Raw logit passed through sigmoid to estimate $P(\text{bonafide}) \in [0, 1]$.
+### Overview and Intended Use
+- **Architecture:** `SimpleCNNDetector` (Phase 2), a 2D CNN for acoustic spoof detection. Phase 1 is a separate acoustic heuristic; Phases 3 and 4 are architecture stubs, not additional trained models.
+- **Input:** 13 MFCC coefficients with Cepstral Mean Normalization (CMN), cropped to 64 time steps (`(1, 13, 64)`) from 16 kHz mono audio.
+- **Output:** A sigmoid score estimating $P(\text{bonafide}) \in [0, 1]$, followed by thresholding and risk aggregation.
+- **Intended use:** Research and defensive decision support. Scores are probabilistic indicators, not proof of identity, fraud, or legal culpability.
 
-### Training & Evaluation Protocol
-- **Dataset:** ASVspoof protocol and multi-corpus anti-spoofing speech data.
-- **Data Splitting:** Speaker-disjoint assignments (`train`: 70%, `validation`: 15%, `test`: 15%) with connected component source tracking.
-- **Generator Disjointness:** Held-out TTS and voice conversion algorithms assigned strictly to the `"test_unseen"` evaluation split to benchmark zero-day robustness.
+### Data and Evaluation Protocol
+- Checkpoint metadata identifies the training data as `ASVSpoof2019_LA_VigilVoice`. The source corpus and complete original training/evaluation audio are not bundled, so that provenance and the metadata's training metrics cannot be independently reproduced from this checkout.
+- `data/metadata.csv` and the generated demo audio are **synthetic demonstration data, not valid anti-spoofing benchmark data**.
+- `training/splits.py` supports speaker-disjoint and generator-disjoint assignments. For a meaningful unseen-attack result, evaluate generators held out from training in `test_unseen` (or an equivalent generator-disjoint split) and publish the manifest, sample counts, and per-attack metrics.
 
-### Empirical Performance Metrics
-| Evaluation Slice | Accuracy | Equal Error Rate (EER) | ROC-AUC | FAR | FRR |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **Seen Attack Generators** | **92.4%** | **4.52%** | **0.973** | **4.10%** | **4.90%** |
-| **Unseen Attack Generators** | **81.8%** | **12.80%** | **0.912** | **11.90%** | **13.50%** |
-| **Combined Benchmark** | **88.6%** | **6.75%** | **0.954** | **6.40%** | **7.10%** |
+### Metrics in the Bundled Reports
+Sources: `training/runs/evaluation_report.json` and `training/runs/attack_type_results.json`. The report contains four test samples: two bona fide and two TTS attacks. Attack accuracy below is measured on the attack samples; EER also uses the two bona fide samples.
+
+| Evaluation Slice | Attack Samples | Attack Accuracy | EER | Slice ROC-AUC |
+| :--- | :---: | :---: | :---: | :---: |
+| **Seen/known TTS attack slice** | 2 | 100% | 0.0% | Not separately reported |
+| **Unseen attack generators** | 0 | Not evaluated | Not evaluated | Not evaluated |
+
+The overall four-sample report records accuracy **100%**, EER **0.0%**, ROC-AUC **1.000**, FAR **0.0%**, and FRR **0.0%**. **This tiny report is a regression artifact, not reliable evidence of real-world or unseen-attack performance.** No generator-disjoint unseen benchmark is included; such metrics must be measured rather than inferred from this result.
 
 ### Known Failure Modes
-1. **Unseen Synthesis Architectures:** Novel vocoders or diffusion waveform generators unseen during training exhibit an EER generalization gap (~12.8% vs. 4.5%).
-2. **Narrowband Telephony Transcoding:** Heavily compressed 8kHz PSTN audio (e.g., AMR-NB, G.711) strips high-frequency spectral cues, resulting in conservative `UNCERTAIN` verdicts.
-3. **Severe Environmental Noise:** Audio recorded in environments with low SNR (< 10 dB) or heavy reverberation may cause VAD truncation or reduced confidence.
+1. **Novel synthesis and replay attacks:** Generalization to unseen generators is unverified; new vocoders, diffusion models, voice conversion, and replay chains can be missed.
+2. **Noise and channel shift:** The bundled four-sample robustness report shows false accepts under tested noise conditions. Low SNR, telephony codecs, resampling, and reverberation can remove discriminative cues or degrade VAD.
+3. **Overlapping speakers:** The pipeline has no speaker diarization, so a real and synthetic speaker on one channel can contaminate each other's scores.
+4. **Fallback behavior:** Heuristic-only operation does not have the same behavior or validation profile as CNN operation; an unavailable or integrity-failed checkpoint must not be treated as equivalent detection capability.
 
 ---
 
-## 🔒 Privacy, Legal, and DPDP Act (2023) Compliance
+## 🔒 Privacy, Consent, and India's DPDP Act (2023)
 
-VigilVoice is engineered with strict privacy-by-design principles compliant with India's **Digital Personal Data Protection (DPDP) Act, 2023**:
+VigilVoice includes privacy-minded defaults relevant to deployments subject to India's **Digital Personal Data Protection (DPDP) Act, 2023**. This is not a compliance certification or legal advice: the deployer must establish a lawful basis, provide required notices, honor data-principal rights, and define retention and security procedures.
 
-1. **No Raw Audio Storage by Default:** By default, VigilVoice does **not** persist, log, or store raw input audio on disk. Audio streams and uploads are decoded in-memory, processed transiently through feature extraction, and immediately discarded from RAM.
-2. **Explicit User Consent:** Any capture or transmission of speech audio requires active user authorization through standard browser microphone permissions or enterprise call-recording disclosure notifications.
-3. **Incident Telemetry Anonymization:** Exported incident reports (`reports/incidents/{incident_id}.json`) contain only cryptographic and technical risk telemetry:
-   - Call timestamp & duration
-   - Rolling peak spoof confidence score
-   - Model SHA-256 fingerprint & runtime version
-   - Categorical risk level (`LOW`, `ELEVATED`, `HIGH`, `CRITICAL`)
-   - **No biometric voiceprints, audio waveforms, or speech transcripts are ever stored.**
-4. **Lawful Screening:** VigilVoice is designed strictly as a defensive anti-fraud analysis tool and does not engage in covert or unauthorized communications interception.
+1. **No persistent raw-audio storage by default:** Live PCM is processed in memory. Uploaded files are written to unpredictably named temporary files for decoding and deleted after analysis; they are not copied into the incident store. Operators should secure the system temporary directory and account for crash/OS cleanup behavior.
+2. **Consent and lawful monitoring:** Browser microphone permission authorizes only that browser capture. It is not consent to intercept a phone call. Before monitoring or forking a call, obtain valid consent from required participants and provide clear notices under applicable law and organizational policy.
+3. **Incident metadata:** Exported `reports/incidents/{incident_id}.json` files contain timestamps, session/incident IDs, duration, risk scores, model status/SHA-256, and manually selected social-engineering flags. They do not contain raw waveforms, spectrograms, voiceprints, or transcripts. Protect these records as potentially linkable personal/security data and apply an appropriate retention policy.
+4. **Defensive use only:** Do not use VigilVoice for covert or unauthorized interception. Production telephony adapters additionally need authenticated transport, access control, audit logging, and consent handling.
 
 ---
 
 ## ⚠️ Limitations
 
-* **Utterance Duration:** Clips shorter than 0.25 seconds are rejected by quality validation, as they do not provide sufficient acoustic frames for reliable spectral feature extraction.
-* **Telephony Codec Degradation:** When analyzing 8kHz PSTN audio transcoded to 16kHz, high-frequency harmonics are naturally missing, which may trigger conservative uncertainty flags.
-* **Environmental Acoustics:** Audio recorded in reverberant rooms or through faulty microphones may be classified as `DEGRADED`, lowering model confidence.
-* **Dual-Speaker Overlap:** In multi-speaker calls, overlapping speech from legitimate and synthetic voices requires single-channel speaker diarization before scoring.
+* **Not a phone-call interceptor:** The included live UI captures browser microphone audio. Real call monitoring requires the external, lawfully deployed telephony adapter shown above.
+* **Limited evaluation evidence:** The bundled evaluation has only four samples and no unseen-generator result. It does not establish production accuracy across languages, speakers, attacks, or codecs.
+* **Short and degraded audio:** Clips shorter than 0.25 seconds are rejected. Noise, reverberation, faulty microphones, narrowband codecs, and resampling can reduce confidence or cause errors.
+* **Overlapping speakers:** No speaker diarization is included; overlapping bona fide and synthetic speech cannot be reliably attributed to a speaker.
+* **Probabilistic decisions:** False accepts and false rejects remain possible. Use an independent verification channel for consequential actions rather than blocking payments or accusing a person solely from a score.
+* **Demo overrides:** When `DEMO_MODE` is enabled, forced verdicts intentionally bypass genuine inference for presentations. Keep it disabled for real monitoring.
+* **Live-session scaling:** Active live sessions are process-local. Multiple workers require sticky routing or shared session state; incident JSON storage also needs an appropriate production retention and access-control policy.
 
 ---
 
@@ -329,29 +341,25 @@ Ensure all audio analysis, security validations, and ML pipelines function prope
 pytest tests/ -v
 ```
 
-This runs all **105 automated unit, integration, and security tests** covering Phases 11 through 16.
+This runs all **106 automated unit, integration, and security tests**, including the phase-specific suites for Phases 11 through 16 and the fixed real/fake AUC regression gate.
 
 ---
 
 ## 📦 Model Checkpoint Storage Policy (Releases / Git LFS)
 
 > [!CAUTION]
-> **Do NOT commit binary model checkpoints to the Git repository.**
-> Large model weights (`*.pth`, `*.pt`, `*.onnx`, `*.bin` > 50MB) inflate git commit history and degrade clone performance.
-> - Production models should be hosted via **GitHub Releases** assets or tracked using **Git LFS** (`git lfs track "*.pth"`).
-> - The repository's `.gitignore` explicitly excludes raw checkpoints in `models/` (except documentation).
+> **Do NOT commit new large model checkpoints to the Git repository.**
+> Large model weights (`*.pth`, `*.pt`, `*.onnx`, `*.bin`) permanently inflate Git history and slow clones.
+> - Publish production weights as **GitHub Releases** assets, or track them with **Git LFS** (for example, `git lfs track "*.pth"`) before adding them.
+> - Commit only small metadata, metrics, and SHA-256 manifests alongside the code; document the exact artifact version and download location.
 
 ---
 
-## 📸 Visualizations & Screenshots
+## 📸 Screenshots
 
-| Live Detection Timeline | Risk Analytics & EER Curves |
+| Security dashboard | Live browser-microphone monitor |
 | :---: | :---: |
-| ![Confidence Distribution](reports/confidence_distribution.png) | ![Robustness EER Curve](reports/robustness_eer.png) |
-
-| Robustness Accuracy vs Transformation | Robustness ROC-AUC Curves |
-| :---: | :---: |
-| ![Robustness Accuracy](reports/robustness_accuracy.png) | ![Robustness AUC](reports/robustness_auc.png) |
+| ![VigilVoice security dashboard with model health and incident analytics](docs/screenshots/dashboard.png) | ![VigilVoice live monitor with risk meter and detection timeline](docs/screenshots/live-detection.png) |
 
 ---
 
