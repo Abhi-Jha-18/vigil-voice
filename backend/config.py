@@ -77,6 +77,10 @@ class Settings:
     live_max_buffer_mb: float
     blend_mode: str | None = None
     model_sha256: str | None = None
+    aggregation_strategy: str = "robust_risk"
+    api_key: str | None = None
+    rate_limit_requests: int = 120
+    rate_limit_window_seconds: float = 60.0
 
     @property
     def is_production(self) -> bool:
@@ -174,6 +178,10 @@ def load_settings() -> Settings:
         live_max_buffer_mb=float(os.getenv("LIVE_MAX_BUFFER_MB", "10.0")),
         blend_mode=blend_mode,
         model_sha256=os.getenv("MODEL_SHA256").strip().lower() if os.getenv("MODEL_SHA256") else None,
+        aggregation_strategy=os.getenv("AGGREGATION_STRATEGY", "robust_risk").strip().lower(),
+        api_key=os.getenv("API_KEY").strip() if os.getenv("API_KEY") else None,
+        rate_limit_requests=int(os.getenv("RATE_LIMIT_REQUESTS", "120")),
+        rate_limit_window_seconds=float(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60.0")),
     )
     if settings.sample_rate <= 0 or settings.max_upload_mb <= 0:
         raise ValueError("SAMPLE_RATE and MAX_UPLOAD_MB must be positive.")

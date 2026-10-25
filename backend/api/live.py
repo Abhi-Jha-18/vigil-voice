@@ -17,11 +17,12 @@ from typing import Dict, List, Optional
 
 import numpy as np
 import torch
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 from backend.config import PROJECT_ROOT, settings
+from backend.api.auth import verify_api_key, validate_websocket_origin
 from backend.audio.processor import normalize_audio
 from backend.audio.features import extract_mfcc_for_model
 from backend.detection.detector import (
@@ -399,7 +400,7 @@ async def get_reporting_resources():
     }
 
 
-@router.post("/incident/{session_id}/report")
+@router.post("/incident/{session_id}/report", dependencies=[Depends(verify_api_key)])
 async def generate_incident_evidence_report(session_id: str):
     """Saves structured incident evidence JSON to reports/incidents/{incident_id}.json."""
     session = session_manager.get_session(session_id)
@@ -460,6 +461,10 @@ async def websocket_live_audio(websocket: WebSocket, session_id: str):
     WebSocket endpoint receiving live float32 PCM audio stream.
     Processes 2.5s sliding windows (1.0s hop) asynchronously and returns detection results.
     """
+    if not validate_websocket_origin(websocket):
+        await websocket.close(code=1008, reason="Forbidden origin")
+        return
+
     session = session_manager.get_session(session_id)
     if not session:
         await websocket.close(code=4004, reason="Session not found or expired")

@@ -73,10 +73,11 @@ def extract_mfcc_for_model(y: np.ndarray, sr: int = 16000) -> np.ndarray:
     return _pad_or_crop(_cmn(mfcc)).astype(np.float32, copy=False)
 
 
-def get_mel_spectrogram_b64(y: np.ndarray, sr: int = 16000) -> str:
+def get_mel_spectrogram_b64(y: np.ndarray, sr: int = 16000, max_width: int = 800) -> str:
     """
     Computes the Mel Spectrogram and returns a base64 encoded PNG image string.
     Uses plt.imsave (no full figure/colorbar) so dashboard rendering stays fast.
+    Caps the spectrogram image width to max_width to prevent oversized payloads.
     """
     if y is None or len(y) == 0:
         return ""
@@ -86,6 +87,12 @@ def get_mel_spectrogram_b64(y: np.ndarray, sr: int = 16000) -> str:
             y=y, sr=sr, n_mels=64, fmax=8000, n_fft=1024, hop_length=256,
         )
         S_dB = librosa.power_to_db(S, ref=np.max)
+        if S_dB.shape[1] > max_width:
+            step = int(np.ceil(S_dB.shape[1] / max_width))
+            S_dB = S_dB[:, ::step]
+            if S_dB.shape[1] > max_width:
+                S_dB = S_dB[:, :max_width]
+
         buf = io.BytesIO()
         with _PLOT_LOCK:
             plt.imsave(buf, S_dB, format="png", cmap="magma", origin="lower")

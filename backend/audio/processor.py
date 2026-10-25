@@ -1,4 +1,5 @@
 import os
+import time
 import librosa
 import numpy as np
 import soundfile as sf
@@ -12,9 +13,9 @@ def validate_format(filename: str) -> bool:
     ext = os.path.splitext(filename)[1].lower()
     return ext in ALLOWED_EXTENSIONS
 
-def _load_with_av(filepath: str, target_sr: int = 16000) -> tuple[np.ndarray, int, int]:
+def _load_with_av(filepath: str, target_sr: int = 16000, timeout_seconds: float = 30.0) -> tuple[np.ndarray, int, int]:
     """
-    Decodes audio from containers (e.g. MP4, M4A, WEBM) using PyAV.
+    Decodes audio from containers (e.g. MP4, M4A, WEBM) using PyAV with decode timeout protection.
     """
     import av
     try:
@@ -39,8 +40,11 @@ def _load_with_av(filepath: str, target_sr: int = 16000) -> tuple[np.ndarray, in
     )
 
     chunks = []
+    start_decode = time.monotonic()
     try:
         for frame in container.decode(stream):
+            if time.monotonic() - start_decode > timeout_seconds:
+                raise TimeoutError("Audio decoding timed out.")
             for resampled_frame in resampler.resample(frame):
                 arr = resampled_frame.to_ndarray()
                 if arr.ndim > 1:
@@ -48,6 +52,8 @@ def _load_with_av(filepath: str, target_sr: int = 16000) -> tuple[np.ndarray, in
                 chunks.append(arr)
 
         for resampled_frame in resampler.resample(None):
+            if time.monotonic() - start_decode > timeout_seconds:
+                raise TimeoutError("Audio decoding timed out.")
             arr = resampled_frame.to_ndarray()
             if arr.ndim > 1:
                 arr = arr.reshape(-1)
@@ -64,7 +70,29 @@ def _load_with_av(filepath: str, target_sr: int = 16000) -> tuple[np.ndarray, in
     y = np.concatenate(chunks).astype(np.float32)
     return y, target_sr, orig_channels
 
-def load_and_resample(filepath: str, target_sr: int = 16000) -> tuple[np.ndarray, int, int]:
+def load_and_resample(
+    filepath: str,
+    target_sr: int = 16000,
+    max_duration_seconds: float | None = None,
+) -> tuple[np.ndarray, int, int]:
+    """
+    Loads audio, resamples to target_sr, and converts it to mono safely.
+    Checks duration from header before decoding if max_duration_seconds is specified.
+    Supports MP4, M4A, WAV, MP3, OGG, FLAC, WEBM, AAC.
+    """
+    if not filepath or not os.path.exists(filepath):
+        raise ValueError("Audio file is missing or unreadable.")
+
+    if os.path.getsize(filepath) == 0:
+        raise ValueError("Uploaded audio file is empty.")
+
+    if max_duration_seconds is not None and max_duration_seconds > 0:
+        from backend.utils.audio_utils import get_audio_header_duration
+        hdr_duration = get_audio_header_duration(filepath)
+        if hdr_duration is not None and hdr_duration > max_duration_seconds:
+            raise ValueError(
+                f"Audio duration ({hdr_duration:.1f}s) exceeds maximum allowed duration ({max_duration_seconds:.1f}s)."
+            )
     """
     Loads audio, resamples to target_sr, and converts it to mono safely.
     Supports MP4, M4A, WAV, MP3, OGG, FLAC, WEBM, AAC.

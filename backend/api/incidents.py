@@ -11,11 +11,18 @@ import json
 import re
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 
 from backend.config import PROJECT_ROOT
+from backend.api.auth import verify_api_key
 
-router = APIRouter(prefix="/api/incidents", tags=["Incidents"])
+# Multi-worker deployment note:
+# Incident records are persisted as JSON files on disk under reports/incidents/,
+# enabling read-only listing and retrieval across worker processes.
+# For distributed multi-node clusters, replace disk storage with SQLite/Postgres or Redis.
+# In-memory live session state requires single-worker uvicorn (workers=1) or sticky routing.
+
+router = APIRouter(prefix="/api/incidents", tags=["Incidents"], dependencies=[Depends(verify_api_key)])
 
 INCIDENTS_DIR = PROJECT_ROOT / "reports" / "incidents"
 

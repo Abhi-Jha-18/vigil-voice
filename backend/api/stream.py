@@ -11,6 +11,7 @@ from backend.detection.detector import run_ai_detection
 from backend.detection.risk import generate_risk_report
 from backend.detection.explainability import generate_evidence
 from backend.detection.aggregator import SegmentPrediction, aggregate_predictions
+from backend.api.auth import validate_websocket_origin
 
 router = APIRouter()
 
@@ -124,6 +125,10 @@ class StreamAnalyzer:
 
 @router.websocket("/api/stream")
 async def websocket_stream(websocket: WebSocket):
+    if not validate_websocket_origin(websocket):
+        await websocket.close(code=1008, reason="Forbidden origin")
+        return
+
     await websocket.accept()
     
     analyzer = StreamAnalyzer(sample_rate=settings.sample_rate, chunk_duration_sec=3.0, hop_duration_sec=1.0)
