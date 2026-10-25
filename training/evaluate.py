@@ -63,7 +63,7 @@ def evaluate_model(args):
     model.eval()
 
     # 3. Evaluate
-    all_preds = []
+    all_logits = []
     all_labels = []
     all_attack_types = []
     
@@ -71,10 +71,8 @@ def evaluate_model(args):
         for inputs, labels, metas in test_loader:
             inputs, labels = inputs.to(device), labels.to(device)
             outputs = model(inputs).squeeze(1)
-            if outputs.dim() == 0: outputs = outputs.unsqueeze(0)
-            outputs = torch.sigmoid(outputs)
             
-            all_preds.extend(outputs.cpu().numpy())
+            all_logits.extend(outputs.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
             
             # Extract attack types from metadata dictionary
@@ -84,20 +82,28 @@ def evaluate_model(args):
                 all_attack_types.extend(["unknown"] * inputs.size(0))
             
     all_labels = np.array(all_labels)
-    all_preds = np.array(all_preds)
+    all_logits = np.array(all_logits)
+    # Probabilities clipped only for display
+    all_preds = 1.0 / (1.0 + np.exp(-all_logits))
     all_attack_types = np.array(all_attack_types)
 
-    # 4. Metrics
-    metrics = calculate_metrics(all_labels, all_preds)
-    
-    # EER expects positive class scores.
-    # In VigilVoice, 1 = REAL, 0 = FAKE.
-    eer, eer_threshold = calculate_eer(all_labels, all_preds)
+    # 4. Metrics (computed on raw logits; clip only for display)
+    metrics = calculate_metrics(all_labels, all_preds, raw_logits=all_logits)
+    eer = metrics["eer"]
+    eer_threshold = metrics["eer_threshold"]
+
+    # Check if dataset contains demo/fixture records
+    is_demo_fixture = any(
+        any(k in (r.dataset_source or "").lower() or k in (r.filepath or "").lower() for k in ("demo", "fixture", "mock", "synthetic"))
+        for r in test_dataset.records
+    )
+    is_synthetic = bool(args.allow_synthetic or is_demo_fixture)
     
     report = {
-        "dataset": "synthetic_local" if args.allow_synthetic else "ASVspoof_or_similar",
-        "dataset_type": "SYNTHETIC" if args.allow_synthetic else "REAL",
-        "model_status": "DEMO_MODEL" if args.allow_synthetic else "REAL_MODEL",
+        "dataset": "synthetic_local" if is_synthetic else "ASVspoof_or_similar",
+        "dataset_type": "SYNTHETIC" if is_synthetic else "REAL",
+        "is_synthetic": is_synthetic,
+        "model_status": "DEMO_MODEL" if is_synthetic else "REAL_MODEL",
         "split": "test",
         "samples": len(test_dataset),
         "accuracy": metrics['accuracy'],
@@ -112,13 +118,35 @@ def evaluate_model(args):
         "manifest": str(args.manifest),
         "checkpoint": str(args.checkpoint)
     }
+    if is_synthetic:
+        report["performance_disclaimer"] = (
+            "Metrics computed on synthetic/demo fixtures; do NOT report as real performance."
+        )
 
     print("\n--- Evaluation Results ---")
+    if is_synthetic:
+        print("[NOTICE] DEMO / SYNTHETIC DATA: Metrics below reflect synthetic demo validation only, NOT real-world performance.")
     print(f"Accuracy:  {metrics['accuracy']*100:.2f}%")
     print(f"ROC-AUC:   {metrics['roc_auc']:.4f}")
     print(f"EER:       {eer*100:.2f}% (at threshold {eer_threshold:.4f})")
     print(f"FAR:       {metrics['far']*100:.2f}%")
     print(f"FRR:       {metrics['frr']*100:.2f}%")
+
+    # Optional deployment if passing --max-eer threshold
+    if getattr(args, "deploy", False):
+        max_eer = getattr(args, "max_eer", 0.05)
+        if is_synthetic:
+            print("\n[Deploy Blocked] Checkpoint is marked synthetic/demo; refusing deployment to production weights.")
+        elif eer <= max_eer:
+            import shutil
+            deployed_path = Path(project_root) / "models" / "cnn_weight.pth"
+            shutil.copy2(args.checkpoint, deployed_path)
+            meta_src = Path(args.checkpoint).with_name(Path(args.checkpoint).stem + "_metadata.json")
+            if meta_src.is_file():
+                shutil.copy2(meta_src, deployed_path.with_name("cnn_weight_metadata.json"))
+            print(f"\n[Deploy Success] EER {eer:.4f} <= threshold {max_eer:.4f}. Model deployed to {deployed_path}.")
+        else:
+            print(f"\n[Deploy Aborted] EER {eer:.4f} exceeds max-eer threshold {max_eer:.4f}. Model not deployed.")
     
     # 5. Save Report & Artifacts
     if args.output:
@@ -223,6 +251,17 @@ if __name__ == "__main__":
         "--allow-synthetic",
         action="store_true",
         help="Allow evaluation on DEMO/synthetic fixtures.",
+    )
+    parser.add_argument(
+        "--deploy",
+        action="store_true",
+        help="Deploy checkpoint to models/cnn_weight.pth if evaluation passes max-eer threshold.",
+    )
+    parser.add_argument(
+        "--max-eer",
+        type=float,
+        default=0.05,
+        help="Maximum allowed EER to qualify for deployment (default: 0.05).",
     )
 
     args = parser.parse_args()

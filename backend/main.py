@@ -540,7 +540,9 @@ async def _run_analysis_pipeline(temp_path: str, phase: str, force_verdict: Opti
             evidence_signals=evidence
         )
 
-        decision = make_decision(real_score)
+        from backend.detection.detector import get_model_thresholds
+        t_real, t_fake = get_model_thresholds()
+        decision = make_decision(real_score, threshold_real=t_real, threshold_fake=t_fake)
         processing_time_ms = int((time.perf_counter() - start_time) * 1000)
 
         return {

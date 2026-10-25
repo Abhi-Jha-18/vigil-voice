@@ -362,3 +362,127 @@ def test_centralized_thresholds_and_blend_mode():
     with patch.object(settings, "blend_mode", "blend"):
         assert settings.resolve_blend_mode("REAL_MODEL") == "blend"
 
+
+from training.metrics import calculate_metrics, calculate_eer
+from training.train import fit_temperature_scaling, choose_thresholds_from_roc
+from backend.detection.detector import get_model_temperature, get_model_thresholds
+
+
+def test_calculate_metrics_includes_eer_and_uses_raw_logits():
+    """
+    Test 8 & 9:
+    - calculate_metrics returns 'eer' and 'eer_threshold'
+    - EER and AUC can be computed directly on raw logits
+    """
+    y_true = np.array([1, 1, 1, 0, 0, 0])
+    # Separable raw logits (positive for class 1, negative for class 0)
+    raw_logits = np.array([5.0, 3.2, 2.1, -1.5, -3.0, -4.2])
+    probs = 1.0 / (1.0 + np.exp(-raw_logits))
+
+    metrics = calculate_metrics(y_true, probs, raw_logits=raw_logits)
+    assert "eer" in metrics
+    assert "eer_threshold" in metrics
+    assert metrics["eer"] == 0.0
+    assert metrics["roc_auc"] == 1.0
+
+
+def test_temperature_scaling_and_roc_threshold_selection():
+    """
+    Test:
+    - fit_temperature_scaling finds optimal temperature T > 0
+    - choose_thresholds_from_roc determines REAL and FAKE thresholds
+    """
+    # Overconfident logits
+    logits = np.array([10.0, 8.0, 6.0, 4.0, -4.0, -6.0, -8.0, -10.0])
+    labels = np.array([1, 1, 1, 0, 1, 0, 0, 0])
+    T = fit_temperature_scaling(logits, labels)
+    assert T > 0.1
+    assert T < 10.0
+
+    probs = 1.0 / (1.0 + np.exp(-logits / T))
+    t_real, t_fake = choose_thresholds_from_roc(labels, probs, target_far=0.10)
+    assert 0.05 <= t_fake < t_real <= 0.95
+
+
+def test_calibrated_temperature_and_thresholds_applied_at_inference():
+    """
+    Test:
+    - Metadata temperature and thresholds are loaded and applied during inference
+    """
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        model_file = tmp_path / "calibrated_model.pth"
+        meta_file = tmp_path / "calibrated_model_metadata.json"
+
+        # Create model weights
+        from backend.detection.detector import SimpleCNNDetector
+        dummy_model = SimpleCNNDetector()
+        torch.save(dummy_model.state_dict(), model_file)
+
+        meta_file.write_text(json.dumps({
+            "is_synthetic": False,
+            "temperature": 2.5,
+            "threshold_real": 0.82,
+            "threshold_fake": 0.35,
+        }))
+
+        with patch.object(settings, "model_path", model_file):
+            reset_cached_model()
+            try:
+                t = get_model_temperature()
+                assert t == 2.5
+                tr, tf = get_model_thresholds()
+                assert tr == 0.82
+                assert tf == 0.35
+            finally:
+                reset_cached_model()
+
+
+def test_pinned_model_sha256_verification():
+    """
+    Test:
+    - Pinned MODEL_SHA256 verified against actual model file hash
+    - Matching hash passes, mismatched hash triggers MODEL_INTEGRITY_FAILURE
+    """
+    client = TestClient(app)
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        model_file = tmp_path / "pinned_model.pth"
+        meta_file = tmp_path / "pinned_model_metadata.json"
+
+        import hashlib
+        model_bytes = b"pinned-model-weights-content-abc"
+        model_file.write_bytes(model_bytes)
+        correct_sha = hashlib.sha256(model_bytes).hexdigest()
+        wrong_sha = "f" * 64
+
+        meta_file.write_text(json.dumps({
+            "is_synthetic": False,
+            "model_sha256": correct_sha
+        }))
+
+        with patch.object(settings, "model_path", model_file):
+            # 1. Pinned to wrong hash -> fails
+            with patch.object(settings, "model_sha256", wrong_sha):
+                reset_cached_model()
+                try:
+                    status = _get_checkpoint_status(model_file)
+                    assert status == "MODEL_INTEGRITY_FAILURE"
+
+                    resp = client.get("/api/ready")
+                    assert resp.status_code == 503
+                    assert resp.json()["ready"] is False
+                finally:
+                    reset_cached_model()
+
+            # 2. Pinned to correct hash -> passes
+            with patch.object(settings, "model_sha256", correct_sha):
+                reset_cached_model()
+                try:
+                    status = _get_checkpoint_status(model_file)
+                    assert status == "REAL_MODEL"
+                finally:
+                    reset_cached_model()
+
+

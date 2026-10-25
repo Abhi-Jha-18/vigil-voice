@@ -68,7 +68,9 @@ class StreamAnalyzer:
         end_time = start_time + (self.chunk_size / self.sample_rate)
         
         from backend.detection.decision import classify_score
-        pred_label, conf = classify_score(real_prob)
+        from backend.detection.detector import get_model_thresholds
+        t_real, t_fake = get_model_thresholds()
+        pred_label, conf = classify_score(real_prob, threshold_real=t_real, threshold_fake=t_fake)
         
         seg = SegmentPrediction(
             segment_id=self.segment_counter,

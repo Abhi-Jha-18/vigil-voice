@@ -22,8 +22,11 @@ N_MFCC       = 13
 N_TIME_STEPS = 64   # Must match the value used during training
 
 # Module-level cached model (loaded once on first Phase 2 call)
-_cnn_model     = None
-_cnn_status    = None   # REAL_MODEL, DEMO_MODEL, HEURISTIC_ONLY, MODEL_UNAVAILABLE
+_cnn_model          = None
+_cnn_status         = None   # REAL_MODEL, DEMO_MODEL, HEURISTIC_ONLY, MODEL_UNAVAILABLE
+_cnn_temperature    = 1.0
+_cnn_threshold_real = None
+_cnn_threshold_fake = None
 
 
 # ── Model Architectures ────────────────────────────────────────────────────────
@@ -109,15 +112,25 @@ def _compute_file_sha256(path: Path) -> str:
 def _get_checkpoint_status(model_file: Path) -> str:
     """Reads metadata and verifies SHA-256 integrity to determine model status."""
     import json
+    import os
+
+    # 1. Check pinned MODEL_SHA256 from env or settings if set
+    pinned_hash = (getattr(settings, "model_sha256", None) or os.getenv("MODEL_SHA256") or "").strip().lower()
+    if pinned_hash:
+        actual_hash = _compute_file_sha256(model_file)
+        if pinned_hash != actual_hash.lower():
+            print(f"[Security Warning] Pinned checksum mismatch for '{model_file}': expected {pinned_hash}, got {actual_hash}")
+            return "MODEL_INTEGRITY_FAILURE"
+
     metadata_file = model_file.with_name(model_file.stem + "_metadata.json")
     if metadata_file.exists():
         try:
             with open(metadata_file, "r") as f:
                 metadata = json.load(f)
 
-                # Check for recorded checksum to verify integrity
+                # Check for recorded checksum to verify integrity when no pinned hash is configured
                 recorded_hash = metadata.get("model_sha256") or metadata.get("sha256") or metadata.get("expected_sha256")
-                if recorded_hash:
+                if recorded_hash and not pinned_hash:
                     actual_hash = _compute_file_sha256(model_file)
                     if recorded_hash.lower() != actual_hash.lower():
                         print(f"[Security Warning] Checksum mismatch for '{model_file}': expected {recorded_hash}, got {actual_hash}")
@@ -144,7 +157,7 @@ def _load_cnn_model() -> tuple:
     Load the SimpleCNNDetector from disk.
     Returns (model, status_string).
     """
-    global _cnn_model, _cnn_status
+    global _cnn_model, _cnn_status, _cnn_temperature, _cnn_threshold_real, _cnn_threshold_fake
 
     if _cnn_status is not None:
         return _cnn_model, _cnn_status
@@ -166,9 +179,29 @@ def _load_cnn_model() -> tuple:
         state = torch.load(model_file, map_location="cpu", weights_only=True)
         model.load_state_dict(state)
         model.eval()
+
+        # Load temperature and calibration thresholds from metadata
+        metadata_file = model_file.with_name(model_file.stem + "_metadata.json")
+        if metadata_file.exists():
+            try:
+                import json
+                with open(metadata_file, "r") as f:
+                    meta = json.load(f)
+                    temp = meta.get("temperature", meta.get("calibration", {}).get("temperature"))
+                    if temp is not None:
+                        _cnn_temperature = max(0.01, float(temp))
+                    tr = meta.get("threshold_real", meta.get("calibration", {}).get("threshold_real"))
+                    if tr is not None:
+                        _cnn_threshold_real = float(tr)
+                    tf = meta.get("threshold_fake", meta.get("calibration", {}).get("threshold_fake"))
+                    if tf is not None:
+                        _cnn_threshold_fake = float(tf)
+            except Exception:
+                pass
+
         _cnn_model = model
         _cnn_status = status
-        print(f"[Detector] Phase 2 CNN loaded from '{model_file}'. Status: {_cnn_status}")
+        print(f"[Detector] Phase 2 CNN loaded from '{model_file}'. Status: {_cnn_status} (T={_cnn_temperature:.3f})")
         return model, _cnn_status
     except Exception as e:
         print(f"[Detector] Failed to load Phase 2 model: {e} — falling back.")
@@ -178,9 +211,24 @@ def _load_cnn_model() -> tuple:
 
 def reset_cached_model():
     """Testing helper to clear cached model instance and status."""
-    global _cnn_model, _cnn_status
+    global _cnn_model, _cnn_status, _cnn_temperature, _cnn_threshold_real, _cnn_threshold_fake
     _cnn_model = None
     _cnn_status = None
+    _cnn_temperature = 1.0
+    _cnn_threshold_real = None
+    _cnn_threshold_fake = None
+
+
+def get_model_temperature() -> float:
+    """Returns the calibrated inference temperature (defaults to 1.0)."""
+    _load_cnn_model()
+    return _cnn_temperature
+
+
+def get_model_thresholds() -> tuple[float | None, float | None]:
+    """Returns the calibrated (threshold_real, threshold_fake) or (None, None)."""
+    _load_cnn_model()
+    return _cnn_threshold_real, _cnn_threshold_fake
 
 
 def is_cnn_model_available() -> bool:
@@ -417,7 +465,8 @@ def run_phase2_cnn_detection(features: dict, force_verdict: str = None) -> float
         with torch.inference_mode():
             logits = model(tensor).reshape(-1)
             mean_logit = torch.mean(logits)
-            cnn_score = float(torch.sigmoid(mean_logit).cpu().numpy())
+            scaled_logit = mean_logit / max(0.01, _cnn_temperature)
+            cnn_score = float(torch.sigmoid(scaled_logit).cpu().numpy())
             cnn_score = float(np.clip(cnn_score, 0.01, 0.99))
 
         effective_blend = settings.resolve_blend_mode(status)
@@ -532,7 +581,8 @@ def run_segment_detection(segments: list, phase: str = "phase1", force_verdict: 
         for count in segment_crop_counts:
             seg_logits = all_logits[offset : offset + count]
             mean_logit = torch.mean(seg_logits)
-            p = float(torch.sigmoid(mean_logit).cpu().numpy())
+            scaled_logit = mean_logit / max(0.01, _cnn_temperature)
+            p = float(torch.sigmoid(scaled_logit).cpu().numpy())
             cnn_probs.append(float(np.clip(p, 0.01, 0.99)))
             offset += count
 
@@ -547,10 +597,11 @@ def run_segment_detection(segments: list, phase: str = "phase1", force_verdict: 
     else:
         real_probs = heur_probs
 
+    t_real, t_fake = get_model_thresholds()
     for seg, real_prob in zip(segments, real_probs):
         real_prob = float(real_prob)
         fake_prob = 1.0 - real_prob
-        pred_label, conf = classify_score(real_prob)
+        pred_label, conf = classify_score(real_prob, threshold_real=t_real, threshold_fake=t_fake)
 
         predictions.append(SegmentPrediction(
             segment_id=seg.segment_id,

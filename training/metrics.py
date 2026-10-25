@@ -7,12 +7,24 @@ def calculate_accuracy(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     """
     return float(np.mean(y_true == y_pred))
 
-def calculate_metrics(y_true: np.ndarray, y_pred_scores: np.ndarray, threshold: float = 0.5) -> dict:
+def calculate_metrics(
+    y_true: np.ndarray,
+    y_pred_scores: np.ndarray,
+    threshold: float = 0.5,
+    raw_logits: np.ndarray = None,
+) -> dict:
     """
-    Computes precision, recall, f1, and accuracy at a given threshold.
+    Computes precision, recall, f1, accuracy, far, frr, roc_auc, and eer.
     Note: y_true should be 1 for REAL, 0 for FAKE.
+    When raw_logits is provided, roc_auc and eer are computed directly on raw logits.
     """
-    y_pred = (y_pred_scores >= threshold).astype(int)
+    roc_scores = raw_logits if raw_logits is not None else y_pred_scores
+
+    if raw_logits is None and (np.any(y_pred_scores < 0.0) or np.any(y_pred_scores > 1.0)):
+        # y_pred_scores are logits
+        y_pred = (y_pred_scores >= (0.0 if threshold == 0.5 else threshold)).astype(int)
+    else:
+        y_pred = (y_pred_scores >= threshold).astype(int)
     
     tp = np.sum((y_true == 1) & (y_pred == 1))
     tn = np.sum((y_true == 0) & (y_pred == 0))
@@ -22,14 +34,19 @@ def calculate_metrics(y_true: np.ndarray, y_pred_scores: np.ndarray, threshold: 
     precision = float(tp / (tp + fp)) if (tp + fp) > 0 else 0.0
     recall = float(tp / (tp + fn)) if (tp + fn) > 0 else 0.0
     f1 = float(2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
-    accuracy = float((tp + tn) / len(y_true))
+    accuracy = float((tp + tn) / len(y_true)) if len(y_true) > 0 else 0.0
     far = float(fp / (tn + fp)) if (tn + fp) > 0 else 0.0
     frr = float(fn / (tp + fn)) if (tp + fn) > 0 else 0.0
     
     try:
-        roc_auc = float(roc_auc_score(y_true, y_pred_scores))
+        roc_auc = float(roc_auc_score(y_true, roc_scores))
     except ValueError:
         roc_auc = 0.5  # Only one class present in evaluation
+
+    try:
+        eer, eer_threshold = calculate_eer(y_true, roc_scores)
+    except Exception:
+        eer, eer_threshold = 0.5, 0.5
     
     return {
         "accuracy": accuracy,
@@ -38,7 +55,9 @@ def calculate_metrics(y_true: np.ndarray, y_pred_scores: np.ndarray, threshold: 
         "f1": f1,
         "far": far,
         "frr": frr,
-        "roc_auc": roc_auc
+        "roc_auc": roc_auc,
+        "eer": eer,
+        "eer_threshold": eer_threshold,
     }
 
 def calculate_eer(y_true: np.ndarray, y_scores: np.ndarray) -> tuple[float, float]:

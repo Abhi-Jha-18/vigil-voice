@@ -76,6 +76,7 @@ class Settings:
     live_max_session_seconds: int
     live_max_buffer_mb: float
     blend_mode: str | None = None
+    model_sha256: str | None = None
 
     @property
     def is_production(self) -> bool:
@@ -116,6 +117,7 @@ class Settings:
             "cors_origins": list(self.cors_origins),
             "demo_mode": self.demo_mode,
             "blend_mode": self.blend_mode,
+            "model_sha256": self.model_sha256,
             "live_window_seconds": self.live_window_seconds,
             "live_hop_seconds": self.live_hop_seconds,
             "live_high_risk_threshold": self.live_high_risk_threshold,
@@ -171,6 +173,7 @@ def load_settings() -> Settings:
         live_max_session_seconds=int(os.getenv("LIVE_MAX_SESSION_SECONDS", "3600")),
         live_max_buffer_mb=float(os.getenv("LIVE_MAX_BUFFER_MB", "10.0")),
         blend_mode=blend_mode,
+        model_sha256=os.getenv("MODEL_SHA256").strip().lower() if os.getenv("MODEL_SHA256") else None,
     )
     if settings.sample_rate <= 0 or settings.max_upload_mb <= 0:
         raise ValueError("SAMPLE_RATE and MAX_UPLOAD_MB must be positive.")

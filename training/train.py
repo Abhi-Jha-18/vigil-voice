@@ -45,6 +45,67 @@ def set_seed(seed: int):
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
+def fit_temperature_scaling(logits: np.ndarray, labels: np.ndarray) -> float:
+    """
+    Fits a single temperature scalar T > 0 on validation set to minimize NLL.
+    """
+    z = torch.tensor(logits, dtype=torch.float32)
+    y = torch.tensor(labels, dtype=torch.float32)
+    
+    log_temp = torch.nn.Parameter(torch.zeros(1, dtype=torch.float32))
+    optimizer = optim.LBFGS([log_temp], lr=0.05, max_iter=50)
+    criterion = nn.BCEWithLogitsLoss()
+
+    def closure():
+        optimizer.zero_grad()
+        loss = criterion(z / torch.exp(log_temp), y)
+        loss.backward()
+        return loss
+
+    try:
+        optimizer.step(closure)
+        T = float(torch.exp(log_temp).item())
+        return float(np.clip(T, 0.1, 10.0))
+    except Exception:
+        return 1.0
+
+
+def choose_thresholds_from_roc(y_true: np.ndarray, calibrated_probs: np.ndarray, target_far: float = 0.05) -> tuple[float, float]:
+    """
+    Chooses REAL and FAKE decision thresholds from validation ROC.
+    - threshold_real: threshold at target_far (FAR <= target_far).
+    - threshold_fake: threshold at target_frr (FRR <= target_far).
+    Between threshold_fake and threshold_real is the UNCERTAIN zone.
+    """
+    from sklearn.metrics import roc_curve
+    try:
+        fpr, tpr, thresholds = roc_curve(y_true, calibrated_probs, pos_label=1)
+        
+        valid_far_idx = np.where(fpr <= target_far)[0]
+        if len(valid_far_idx) > 0:
+            best_far_idx = valid_far_idx[-1]
+            threshold_real = float(thresholds[best_far_idx])
+        else:
+            threshold_real = 0.75
+
+        fnr = 1.0 - tpr
+        valid_frr_idx = np.where(fnr <= target_far)[0]
+        if len(valid_frr_idx) > 0:
+            best_frr_idx = valid_frr_idx[0]
+            threshold_fake = float(thresholds[best_frr_idx])
+        else:
+            threshold_fake = 0.40
+
+        threshold_real = float(np.clip(threshold_real, 0.50, 0.95))
+        threshold_fake = float(np.clip(threshold_fake, 0.05, 0.50))
+        if threshold_fake >= threshold_real:
+            threshold_fake = max(0.05, threshold_real - 0.20)
+
+        return threshold_real, threshold_fake
+    except Exception:
+        return 0.75, 0.40
+
+
 def train_model(args):
     print("=" * 60)
     print("  VigilVoice — Production CNN Training Pipeline")
@@ -117,27 +178,36 @@ def train_model(args):
     if num_real == 0 or num_fake == 0:
         print("\nINSUFFICIENT REAL DATASET\nTraining aborted.")
         sys.exit(1)
-        
-    total_samples = num_real + num_fake
-    real_weight = total_samples / (2.0 * max(1, num_real))
-    fake_weight = total_samples / (2.0 * max(1, num_fake))
 
-    dataset_sources = list({r.dataset_source for r in train_dataset.records if r.dataset_source})
-    metadata["dataset_identifier"] = dataset_sources[0] if dataset_sources else "GenericDataset"
+    dataset_sources = sorted(list({r.dataset_source for r in train_dataset.records if r.dataset_source}))
+    metadata["dataset_sources"] = dataset_sources
+    metadata["dataset_identifier"] = "+".join(dataset_sources) if dataset_sources else "GenericDataset"
+
+    # Identify synthetic or demo/fixture data
+    is_demo_fixture = any(
+        any(k in (r.dataset_source or "").lower() or k in (r.filepath or "").lower() for k in ("demo", "fixture", "mock", "synthetic"))
+        for r in train_dataset.records
+    )
+    is_synthetic = bool(args.allow_synthetic or is_demo_fixture)
+    metadata["is_synthetic"] = is_synthetic
+    metadata["model_status"] = "DEMO_MODEL" if is_synthetic else "REAL_MODEL"
+    if is_synthetic:
+        metadata["performance_disclaimer"] = "Metrics computed on synthetic/demo fixtures; do NOT report as real performance."
 
     print(f"Train samples: {len(train_dataset)} (REAL: {num_real}, FAKE: {num_fake}) | Val samples: {len(val_dataset)}")
-    print(f"Class Weights - REAL: {real_weight:.2f}, FAKE: {fake_weight:.2f}")
+    print(f"Dataset sources: {dataset_sources} | is_synthetic: {is_synthetic}")
 
     # 5. Model & Optimizer
     model = SimpleCNNDetector().to(device)
     pos_weight = torch.tensor([num_fake / max(1, num_real)], dtype=torch.float32).to(device)
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+    unweighted_criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=args.learning_rate, weight_decay=1e-4)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=3, factor=0.5)
 
-    # 6. Training Loop
-    history = {"train_loss": [], "val_loss": [], "val_acc": [], "val_f1": []}
-    best_val_loss = float('inf')
+    # 6. Training Loop (select best checkpoint & early-stop on validation EER)
+    history = {"train_loss": [], "val_loss": [], "val_unweighted_loss": [], "val_acc": [], "val_eer": [], "val_f1": []}
+    best_val_eer = float('inf')
     early_stop_patience = 5
     epochs_no_improve = 0
 
@@ -149,7 +219,6 @@ def train_model(args):
             inputs, labels = inputs.to(device), labels.to(device)
             optimizer.zero_grad()
             outputs = model(inputs).squeeze(1)
-            if outputs.dim() == 0: outputs = outputs.unsqueeze(0)
             
             loss = criterion(outputs, labels)
             loss.backward()
@@ -158,46 +227,73 @@ def train_model(args):
         
         train_loss /= len(train_dataset)
 
-        # Validation
+        # Validation (using same criterion with pos_weight, plus tracking unweighted loss)
         model.eval()
         val_loss = 0.0
-        all_preds = []
+        val_unweighted_loss = 0.0
+        all_logits = []
         all_labels = []
         with torch.no_grad():
             for inputs, labels, _ in val_loader:
                 inputs, labels = inputs.to(device), labels.to(device)
                 outputs = model(inputs).squeeze(1)
-                if outputs.dim() == 0: outputs = outputs.unsqueeze(0)
                 
-                # Use BCEWithLogitsLoss for validation loss tracking
-                val_loss_batch = nn.BCEWithLogitsLoss()(outputs, labels)
-                val_loss += val_loss_batch.item() * inputs.size(0)
-                probs = torch.sigmoid(outputs).cpu().numpy()
-                all_preds.extend(probs)
+                loss_batch = criterion(outputs, labels)
+                val_loss += loss_batch.item() * inputs.size(0)
+                unweighted_batch = unweighted_criterion(outputs, labels)
+                val_unweighted_loss += unweighted_batch.item() * inputs.size(0)
+
+                all_logits.extend(outputs.cpu().numpy())
                 all_labels.extend(labels.cpu().numpy())
                 
         val_loss /= len(val_dataset)
-        metrics = calculate_metrics(np.array(all_labels), np.array(all_preds))
+        val_unweighted_loss /= len(val_dataset)
+
+        all_logits_arr = np.array(all_logits)
+        all_labels_arr = np.array(all_labels)
+        all_probs_arr = 1.0 / (1.0 + np.exp(-all_logits_arr))
+
+        # Compute EER/AUC on raw logits; clip probabilities only for display
+        metrics = calculate_metrics(all_labels_arr, all_probs_arr, raw_logits=all_logits_arr)
+        val_eer = metrics["eer"]
         
-        scheduler.step(val_loss)
+        # Step scheduler on validation EER
+        scheduler.step(val_eer)
 
         history["train_loss"].append(train_loss)
         history["val_loss"].append(val_loss)
+        history["val_unweighted_loss"].append(val_unweighted_loss)
         history["val_acc"].append(metrics['accuracy'])
+        history["val_eer"].append(val_eer)
         history["val_f1"].append(metrics['f1'])
 
         status = ""
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
+        if val_eer < best_val_eer:
+            best_val_eer = val_eer
             epochs_no_improve = 0
-            status = " [New Best]"
+            status = f" [New Best EER: {val_eer*100:.2f}%]"
+
+            # Fit temperature scaling and ROC thresholds on validation set
+            temperature = fit_temperature_scaling(all_logits_arr, all_labels_arr)
+            calibrated_logits = all_logits_arr / max(0.01, temperature)
+            calibrated_probs = 1.0 / (1.0 + np.exp(-calibrated_logits))
+            threshold_real, threshold_fake = choose_thresholds_from_roc(all_labels_arr, calibrated_probs, target_far=0.05)
+
             # Save checkpoint
             torch.save(model.state_dict(), best_model_path)
             metadata["best_epoch"] = epoch + 1
             metadata["best_metrics"] = metrics
-            metadata["is_synthetic"] = bool(args.allow_synthetic)
-            metadata["model_status"] = "DEMO_MODEL" if args.allow_synthetic else "REAL_MODEL"
+            metadata["temperature"] = float(round(temperature, 4))
+            metadata["threshold_real"] = float(round(threshold_real, 4))
+            metadata["threshold_fake"] = float(round(threshold_fake, 4))
+            metadata["calibration"] = {
+                "temperature": float(round(temperature, 4)),
+                "target_far": 0.05,
+                "threshold_real": float(round(threshold_real, 4)),
+                "threshold_fake": float(round(threshold_fake, 4)),
+            }
             metadata["label_mapping"] = {"bonafide": 1, "spoof": 0}
+
             import hashlib
             sha = hashlib.sha256()
             with open(best_model_path, "rb") as f:
@@ -210,36 +306,59 @@ def train_model(args):
         else:
             epochs_no_improve += 1
 
-        print(f"Epoch {epoch+1:02d}/{args.epochs} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Val Acc: {metrics['accuracy']*100:.1f}%{status}")
+        print(
+            f"Epoch {epoch+1:02d}/{args.epochs} | Train Loss: {train_loss:.4f} | "
+            f"Val Loss: {val_loss:.4f} (unweighted: {val_unweighted_loss:.4f}) | "
+            f"Val EER: {val_eer*100:.2f}% | Val Acc: {metrics['accuracy']*100:.1f}%{status}"
+        )
 
         if epochs_no_improve >= early_stop_patience:
-            print(f"Early stopping triggered after {epoch+1} epochs.")
+            print(f"Early stopping triggered after {epoch+1} epochs (no EER improvement for {early_stop_patience} epochs).")
             break
 
-    # 7. Save Artifacts
+    # 7. Save Run Artifacts
     with open(run_dir / "config.json", "w") as f:
         json.dump(metadata, f, indent=2)
     with open(run_dir / "history.json", "w") as f:
         json.dump(history, f, indent=2)
-        
-    # Publish the best checkpoint to the default inference locations so the
-    # dashboard picks it up without extra env vars.
-    import shutil
-    if best_model_path.is_file():
-        deployed = Path(project_root) / "models" / "cnn_weight.pth"
-        shutil.copy2(best_model_path, deployed)
-        src_meta = best_model_path.with_name(best_model_path.stem + "_metadata.json")
-        if src_meta.is_file():
-            shutil.copy2(src_meta, deployed.with_name(deployed.stem + "_metadata.json"))
-            shutil.copy2(src_meta, best_model_path.with_name("vigilvoice_cnn_metadata.json"))
+
+    # 8. Deployment: Only deploy when --deploy flag is provided AND evaluate passes --max-eer threshold
+    if getattr(args, "deploy", False):
+        max_eer = getattr(args, "max_eer", 0.05)
+        if is_synthetic:
+            print("\n[Deploy Blocked] Checkpoint is from synthetic/demo data; refusing deployment to production.")
+        else:
+            try:
+                from training.evaluate import evaluate_model
+                eval_args = argparse.Namespace(
+                    manifest=args.manifest,
+                    checkpoint=best_model_path,
+                    output=run_dir / "deployment_eval_report.json",
+                    batch_size=args.batch_size,
+                    device=args.device,
+                    allow_synthetic=args.allow_synthetic,
+                    deploy=True,
+                    max_eer=max_eer,
+                )
+                print("\nRunning test evaluation for deployment qualification...")
+                evaluate_model(eval_args)
+            except Exception as exc:
+                print(f"[Deploy Error] Evaluation during deploy failed: {exc}")
 
     print("=" * 60)
-    print("  REAL TRAINING COMPLETED")
+    if is_synthetic:
+        print("  [DEMO / SYNTHETIC] TRAINING COMPLETED")
+        print("  NOTE: Metrics computed on synthetic/demo fixtures do NOT reflect real-world performance.")
+    else:
+        print("  REAL TRAINING COMPLETED")
+    print(f"  Best Validation EER: {best_val_eer*100:.2f}%")
     print(f"  Best Validation Metrics: {metadata.get('best_metrics', {})}")
+    print(f"  Calibrated Temperature: {metadata.get('temperature', 1.0)}")
+    print(f"  Calibrated Thresholds: REAL >= {metadata.get('threshold_real')}, FAKE <= {metadata.get('threshold_fake')}")
     print(f"  Model Checkpoint: {best_model_path}")
-    print(f"  Deployed inference weights: {Path(project_root) / 'models' / 'cnn_weight.pth'}")
     print(f"  Run Artifacts: {run_dir}")
     print("=" * 60)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="VigilVoice Production CNN Training")
@@ -254,6 +373,17 @@ if __name__ == "__main__":
         "--allow-synthetic",
         action="store_true",
         help="Allow training on DEMO/synthetic fixtures when a licensed corpus is unavailable.",
+    )
+    parser.add_argument(
+        "--deploy",
+        action="store_true",
+        help="Deploy best model to models/cnn_weight.pth only if evaluation passes max-eer threshold.",
+    )
+    parser.add_argument(
+        "--max-eer",
+        type=float,
+        default=0.05,
+        help="Maximum validation EER allowed for deployment (default: 0.05).",
     )
 
     args = parser.parse_args()
