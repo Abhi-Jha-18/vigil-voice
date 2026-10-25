@@ -271,7 +271,8 @@ class AntiSpoofDataset(Dataset):
             raise FileNotFoundError(f"Missing audio file: {filepath}")
 
         # Lazy imports — avoids pulling matplotlib into validation-only code paths
-        from backend.audio.features import extract_mfcc_for_model
+        import librosa
+        from backend.audio.features import _cmn, mfcc_crops, N_MFCC, N_FFT, HOP_LENGTH, N_MELS
         from training.preprocessing import preprocess_for_training
 
         # Use canonical preprocessing (to ensure training == inference)
@@ -281,31 +282,46 @@ class AntiSpoofDataset(Dataset):
             # Re-raise explicit error instead of faking data
             raise RuntimeError(f"Preprocessing failed for {filepath}: {e}")
 
-        mfcc = extract_mfcc_for_model(audio_array)
-        if mfcc is None or mfcc.shape != (13, 64):
+        if audio_array is None or len(audio_array) == 0:
+            raise ValueError(f"Empty audio for {filepath}")
+
+        raw_mfcc = librosa.feature.mfcc(
+            y=audio_array.astype(np.float32, copy=False),
+            sr=16000,
+            n_mfcc=N_MFCC,
+            n_fft=N_FFT,
+            hop_length=HOP_LENGTH,
+            n_mels=N_MELS,
+        )
+        cmn_mfcc = _cmn(raw_mfcc)
+        crops = mfcc_crops(cmn_mfcc, n=64, hop=32)
+        if crops is None or len(crops) == 0 or crops.shape[1:] != (13, 64):
             raise ValueError(f"Feature extraction failed for {filepath}")
 
-        tensor = torch.from_numpy(np.ascontiguousarray(mfcc, dtype=np.float32)).unsqueeze(0)
         label = torch.tensor(record.label, dtype=torch.float32)
-
         metadata = {
             "speaker_id": record.speaker_id,
             "attack_type": record.attack_type,
             "filepath": str(filepath)
         }
-        return tensor, label, metadata
+        return crops, label, metadata
 
     def __getitem__(self, idx: int):
         if self._cache is not None:
-            tensor, label, metadata = self._cache[idx]
-            tensor = tensor.clone()
+            crops, label, metadata = self._cache[idx]
         else:
-            tensor, label, metadata = self._load_item(idx)
+            crops, label, metadata = self._load_item(idx)
 
         if self.augment:
+            crop_idx = int(torch.randint(0, len(crops), (1,)).item())
+            crop = crops[crop_idx]
+            tensor = torch.from_numpy(np.ascontiguousarray(crop, dtype=np.float32)).unsqueeze(0)
             shift = int(torch.randint(-6, 7, (1,)).item())
             if shift:
                 tensor = torch.roll(tensor, shifts=shift, dims=-1)
             tensor = tensor + torch.randn_like(tensor) * 0.35
+        else:
+            crop = crops[0]
+            tensor = torch.from_numpy(np.ascontiguousarray(crop, dtype=np.float32)).unsqueeze(0)
 
         return tensor, label, metadata

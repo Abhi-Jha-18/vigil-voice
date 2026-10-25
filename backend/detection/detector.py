@@ -81,10 +81,8 @@ class CNNLSTMDetector(nn.Module):
             batch_first=True,
             bidirectional=True
         )
-        self.fc = nn.Sequential(
-            nn.Linear(64 * 2, 1),
-            nn.Sigmoid()
-        )
+        self.fc = nn.Linear(64 * 2, 1)
+
 
     def forward(self, x):
         b, c, f, t = x.shape
@@ -247,7 +245,7 @@ def _cnn_real_probability(model: nn.Module, mfcc_batch: np.ndarray) -> np.ndarra
 
 def _heuristic_score_from_arrays(
     mfcc_stds,
-    sc_mean: float,
+    sc_mean: float = None,
     zcr_mean: float = 0.05,
     mfcc_sequence=None,
     flatness: float = 0.1,
@@ -271,14 +269,15 @@ def _heuristic_score_from_arrays(
         elif std_variance < 9:
             score -= 0.14
 
-    if sc_mean > 2800:
-        score -= 0.16
-    elif sc_mean > 2400:
-        score -= 0.08
-    elif sc_mean < 900:
-        score -= 0.10
-    elif 1100 <= sc_mean <= 2200:
-        score += 0.08
+    if sc_mean is not None:
+        if sc_mean > 2800:
+            score -= 0.16
+        elif sc_mean > 2400:
+            score -= 0.08
+        elif sc_mean < 900:
+            score -= 0.10
+        elif 1100 <= sc_mean <= 2200:
+            score += 0.08
 
     if zcr_mean < 0.02:
         score -= 0.08
@@ -339,15 +338,15 @@ def run_phase1_stub_detection(features: dict, force_verdict: str = None) -> floa
         return 0.5
 
 
-def heuristic_score_from_mfcc(mfcc: np.ndarray) -> float:
+def heuristic_score_from_mfcc(mfcc: np.ndarray, sc_mean: float = None) -> float:
     """Fast heuristic using only a (13, T) MFCC matrix — used for live/segment paths."""
-    if mfcc is None or mfcc.size == 0:
+    if mfcc is None or mfcc.size == 0 or mfcc.shape[1] == 0:
         return 0.5
-    stds = np.std(mfcc, axis=1)
+    stds = np.std(mfcc[1:], axis=1) if mfcc.shape[0] > 1 else np.std(mfcc, axis=1)
     delta_std = float(np.mean(np.std(np.diff(mfcc, axis=1), axis=1))) if mfcc.shape[1] > 2 else 4.0
     return _heuristic_score_from_arrays(
         mfcc_stds=stds,
-        sc_mean=1500.0,
+        sc_mean=sc_mean,
         mfcc_sequence=mfcc,
         delta_std=delta_std,
     )
@@ -389,10 +388,12 @@ def blend_cnn_and_heuristic(cnn_prob, heur_prob):
 
 def run_phase2_cnn_detection(features: dict, force_verdict: str = None) -> float:
     """
-    Runs the trained SimpleCNNDetector using the fixed-length MFCC sequence.
+    Runs the trained SimpleCNNDetector using overlapping MFCC crops.
     Falls back to Phase 1 if the model is not available or invalid.
     Blends a light acoustic prior so out-of-domain clips are less brittle.
     """
+    from backend.audio.features import mfcc_crops
+
     if force_verdict:
         return run_phase1_stub_detection(features, force_verdict)
 
@@ -401,11 +402,24 @@ def run_phase2_cnn_detection(features: dict, force_verdict: str = None) -> float
         return run_phase1_stub_detection(features)
 
     try:
-        mfcc_sequence = _as_mfcc_array(features)
-        if mfcc_sequence.shape != (N_MFCC, N_TIME_STEPS):
+        raw_mfcc = features.get("mfcc_unpadded")
+        if raw_mfcc is None:
+            raw_mfcc = features.get("mfcc_sequence")
+        if raw_mfcc is None:
             return run_phase1_stub_detection(features)
 
-        cnn_score = float(_cnn_real_probability(model, mfcc_sequence[np.newaxis, ...])[0])
+        mfcc_arr = np.asarray(raw_mfcc, dtype=np.float32)
+        if mfcc_arr.ndim != 2 or mfcc_arr.shape[0] != N_MFCC:
+            return run_phase1_stub_detection(features)
+
+        crops = mfcc_crops(mfcc_arr, n=N_TIME_STEPS, hop=32)
+        tensor = torch.from_numpy(np.ascontiguousarray(crops, dtype=np.float32)).unsqueeze(1)
+        with torch.inference_mode():
+            logits = model(tensor).reshape(-1)
+            mean_logit = torch.mean(logits)
+            cnn_score = float(torch.sigmoid(mean_logit).cpu().numpy())
+            cnn_score = float(np.clip(cnn_score, 0.01, 0.99))
+
         heuristic_score = run_phase1_stub_detection(features)
         score = blend_cnn_and_heuristic(cnn_score, heuristic_score)
 
@@ -439,10 +453,11 @@ def run_ai_detection(features: dict, phase: str = "phase1",
 def run_segment_detection(segments: list, phase: str = "phase1", force_verdict: str = None) -> list:
     """
     Runs ML prediction on an array of AudioSegment objects.
-    Batches CNN inference so a 10-segment clip is one forward pass, not ten.
+    Batches CNN inference across all crops and averages logits before sigmoid.
     """
+    import librosa
     from backend.detection.aggregator import SegmentPrediction
-    from backend.audio.features import extract_mfcc_for_model
+    from backend.audio.features import _cmn, mfcc_crops, N_FFT, HOP_LENGTH, N_MELS
     from backend.config import settings as _settings
 
     if not segments:
@@ -453,17 +468,68 @@ def run_segment_detection(segments: list, phase: str = "phase1", force_verdict: 
     model, status = (_load_cnn_model() if use_cnn else (None, None))
     cnn_ready = use_cnn and status in ("REAL_MODEL", "DEMO_MODEL") and model is not None
 
-    mfccs = [extract_mfcc_for_model(seg.audio_data, sr=_settings.sample_rate) for seg in segments]
+    # Compute unpadded MFCC and real spectral centroid per segment
+    raw_mfccs = []
+    sc_means = []
+    for seg in segments:
+        y_seg = seg.audio_data.astype(np.float32, copy=False) if seg.audio_data is not None else np.array([], dtype=np.float32)
+        if len(y_seg) > 0:
+            m = librosa.feature.mfcc(
+                y=y_seg,
+                sr=_settings.sample_rate,
+                n_mfcc=N_MFCC,
+                n_fft=N_FFT,
+                hop_length=HOP_LENGTH,
+                n_mels=N_MELS,
+            )
+            raw_mfccs.append(m)
+            if len(y_seg) >= N_FFT:
+                try:
+                    sc = float(np.mean(librosa.feature.spectral_centroid(
+                        y=y_seg, sr=_settings.sample_rate, n_fft=N_FFT, hop_length=HOP_LENGTH
+                    )))
+                except Exception:
+                    sc = None
+            else:
+                sc = None
+            sc_means.append(sc)
+        else:
+            raw_mfccs.append(np.zeros((N_MFCC, 0), dtype=np.float32))
+            sc_means.append(None)
+
+    heur_probs = [
+        heuristic_score_from_mfcc(m, sc_mean=sc)
+        for m, sc in zip(raw_mfccs, sc_means)
+    ]
 
     if force_verdict:
         real_probs = [run_phase1_stub_detection({}, force_verdict) for _ in segments]
     elif cnn_ready:
-        batch = np.stack(mfccs, axis=0)
-        cnn_probs = _cnn_real_probability(model, batch)
-        heur_probs = np.array([heuristic_score_from_mfcc(m) for m in mfccs], dtype=np.float64)
-        real_probs = blend_cnn_and_heuristic(cnn_probs, heur_probs).tolist()
+        segment_crop_counts = []
+        all_crops_list = []
+        for m in raw_mfccs:
+            cmn_m = _cmn(m)
+            crops = mfcc_crops(cmn_m, n=N_TIME_STEPS, hop=32)
+            all_crops_list.append(crops)
+            segment_crop_counts.append(len(crops))
+
+        all_crops = np.concatenate(all_crops_list, axis=0)
+        tensor = torch.from_numpy(np.ascontiguousarray(all_crops, dtype=np.float32)).unsqueeze(1)
+        with torch.inference_mode():
+            all_logits = model(tensor).reshape(-1)
+
+        cnn_probs = []
+        offset = 0
+        for count in segment_crop_counts:
+            seg_logits = all_logits[offset : offset + count]
+            mean_logit = torch.mean(seg_logits)
+            p = float(torch.sigmoid(mean_logit).cpu().numpy())
+            cnn_probs.append(float(np.clip(p, 0.01, 0.99)))
+            offset += count
+
+        real_probs = blend_cnn_and_heuristic(np.array(cnn_probs, dtype=np.float64), np.array(heur_probs, dtype=np.float64)).tolist()
     else:
-        real_probs = [heuristic_score_from_mfcc(m) for m in mfccs]
+        real_probs = heur_probs
 
     for seg, real_prob in zip(segments, real_probs):
         real_prob = float(real_prob)
