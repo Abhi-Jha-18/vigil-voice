@@ -25,7 +25,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 from backend.detection.detector import SimpleCNNDetector
-from training.dataset import AntiSpoofDataset
+from training.dataset import AntiSpoofDataset, load_metadata
 from training.metrics import calculate_metrics, calculate_eer
 
 def evaluate_model(args):
@@ -39,12 +39,29 @@ def evaluate_model(args):
         print(f"[ERROR] Checkpoint not found: {args.checkpoint}")
         sys.exit(1)
 
-    # 1. Load Dataset (strictly TEST split)
-    print(f"Loading test split from {args.manifest}...")
+    # 1. Load Dataset (TEST and unseen attack splits)
+    print(f"Loading evaluation split from {args.manifest}...")
+    try:
+        all_manifest_records = load_metadata(args.manifest)
+    except Exception:
+        all_manifest_records = []
+
+    train_generators = {
+        r.generator_id for r in all_manifest_records
+        if r.split.lower() == "train" and r.label == 0 and r.generator_id and r.generator_id.lower() not in {"none", "unknown", ""}
+    }
+
+    manifest_splits = {r.split.lower() for r in all_manifest_records}
+    eval_split = getattr(args, "split", "test")
+    if eval_split == "test":
+        unseen_matches = [s for s in ("test_unseen", "unseen", "unseen_attack") if s in manifest_splits]
+        if unseen_matches:
+            eval_split = ["test"] + unseen_matches
+
     try:
         test_dataset = AntiSpoofDataset(
             args.manifest,
-            split="test",
+            split=eval_split,
             root_dir=Path(project_root),
             allow_synthetic=args.allow_synthetic,
             cache_features=True,
@@ -66,6 +83,8 @@ def evaluate_model(args):
     all_logits = []
     all_labels = []
     all_attack_types = []
+    all_generator_ids = []
+    all_splits = []
     
     with torch.no_grad():
         for inputs, labels, metas in test_loader:
@@ -80,17 +99,64 @@ def evaluate_model(args):
                 all_attack_types.extend(metas["attack_type"])
             else:
                 all_attack_types.extend(["unknown"] * inputs.size(0))
+
+            if "generator_id" in metas:
+                all_generator_ids.extend(metas["generator_id"])
+            else:
+                all_generator_ids.extend(["unknown"] * inputs.size(0))
+
+            if "split" in metas:
+                all_splits.extend(metas["split"])
+            else:
+                all_splits.extend(["test"] * inputs.size(0))
             
     all_labels = np.array(all_labels)
     all_logits = np.array(all_logits)
     # Probabilities clipped only for display
     all_preds = 1.0 / (1.0 + np.exp(-all_logits))
     all_attack_types = np.array(all_attack_types)
+    all_generator_ids = np.array(all_generator_ids)
+    all_splits = np.array(all_splits)
 
     # 4. Metrics (computed on raw logits; clip only for display)
     metrics = calculate_metrics(all_labels, all_preds, raw_logits=all_logits)
     eer = metrics["eer"]
     eer_threshold = metrics["eer_threshold"]
+
+    # Seen vs Unseen Attack Analysis
+    bonafide_mask = (all_labels == 1)
+    seen_spoof_mask = np.zeros(len(all_labels), dtype=bool)
+    unseen_spoof_mask = np.zeros(len(all_labels), dtype=bool)
+
+    for i in range(len(all_labels)):
+        if all_labels[i] == 0:
+            gen = all_generator_ids[i]
+            sp = str(all_splits[i]).lower()
+            if sp in ("test_unseen", "unseen", "unseen_attack") or (train_generators and gen not in train_generators):
+                unseen_spoof_mask[i] = True
+            else:
+                seen_spoof_mask[i] = True
+
+    def _calc_subset_metrics(spoof_mask):
+        count = int(np.sum(spoof_mask))
+        if count == 0:
+            return None
+        y_true_s = all_labels[spoof_mask]
+        y_pred_s = all_preds[spoof_mask]
+        acc = float(np.mean((y_pred_s >= 0.5).astype(int) == y_true_s))
+        if np.sum(bonafide_mask) > 0:
+            y_comb = np.concatenate([y_true_s, all_labels[bonafide_mask]])
+            p_comb = np.concatenate([y_pred_s, all_preds[bonafide_mask]])
+            try:
+                sub_eer, _ = calculate_eer(y_comb, p_comb)
+            except Exception:
+                sub_eer = -1.0
+        else:
+            sub_eer = -1.0
+        return {"samples": count, "accuracy": acc, "eer": sub_eer}
+
+    seen_attack_metrics = _calc_subset_metrics(seen_spoof_mask)
+    unseen_attack_metrics = _calc_subset_metrics(unseen_spoof_mask)
 
     # Check if dataset contains demo/fixture records
     is_demo_fixture = any(
@@ -104,7 +170,7 @@ def evaluate_model(args):
         "dataset_type": "SYNTHETIC" if is_synthetic else "REAL",
         "is_synthetic": is_synthetic,
         "model_status": "DEMO_MODEL" if is_synthetic else "REAL_MODEL",
-        "split": "test",
+        "split": str(eval_split),
         "samples": len(test_dataset),
         "accuracy": metrics['accuracy'],
         "precision": metrics['precision'],
@@ -118,6 +184,11 @@ def evaluate_model(args):
         "manifest": str(args.manifest),
         "checkpoint": str(args.checkpoint)
     }
+    if seen_attack_metrics:
+        report["seen_attacks"] = seen_attack_metrics
+    if unseen_attack_metrics:
+        report["unseen_attacks"] = unseen_attack_metrics
+
     if is_synthetic:
         report["performance_disclaimer"] = (
             "Metrics computed on synthetic/demo fixtures; do NOT report as real performance."
@@ -131,6 +202,16 @@ def evaluate_model(args):
     print(f"EER:       {eer*100:.2f}% (at threshold {eer_threshold:.4f})")
     print(f"FAR:       {metrics['far']*100:.2f}%")
     print(f"FRR:       {metrics['frr']*100:.2f}%")
+
+    print("\n--- Seen vs Unseen Attack Analysis ---")
+    if seen_attack_metrics:
+        print(f"  seen_attacks   | Samples: {seen_attack_metrics['samples']:4d} | Acc: {seen_attack_metrics['accuracy']*100:5.1f}% | EER: {seen_attack_metrics['eer']*100:5.1f}%")
+    else:
+        print("  seen_attacks   | None present")
+    if unseen_attack_metrics:
+        print(f"  unseen_attacks | Samples: {unseen_attack_metrics['samples']:4d} | Acc: {unseen_attack_metrics['accuracy']*100:5.1f}% | EER: {unseen_attack_metrics['eer']*100:5.1f}%")
+    else:
+        print("  unseen_attacks | None present")
 
     # Optional deployment if passing --max-eer threshold
     if getattr(args, "deploy", False):
@@ -157,6 +238,15 @@ def evaluate_model(args):
         with open(out_path, "w") as f:
             json.dump(report, f, indent=2)
         print(f"\nReport saved to: {out_path}")
+
+        if seen_attack_metrics or unseen_attack_metrics:
+            seen_unseen_path = reports_dir / "seen_vs_unseen_results.json"
+            with open(seen_unseen_path, "w") as f:
+                json.dump({
+                    "seen_attacks": seen_attack_metrics,
+                    "unseen_attacks": unseen_attack_metrics,
+                }, f, indent=2)
+            print(f"Seen vs unseen attack results saved to: {seen_unseen_path}")
         
         # 6. Generate Confusion Matrix
         y_pred_classes = (all_preds >= 0.5).astype(int)
@@ -214,9 +304,9 @@ def evaluate_model(args):
                 # EER (Need positive and negative classes for ROC, if attack is only SPOOF, EER against all BONAFIDE)
                 # To be robust, if it's a SPOOF attack, we combine it with ALL BONAFIDE for EER calculation
                 if np.all(y_true_a == 0):
-                    bonafide_mask = (all_labels == 1)
-                    y_true_combined = np.concatenate([y_true_a, all_labels[bonafide_mask]])
-                    y_pred_combined = np.concatenate([y_pred_a, all_preds[bonafide_mask]])
+                    bonafide_mask_att = (all_labels == 1)
+                    y_true_combined = np.concatenate([y_true_a, all_labels[bonafide_mask_att]])
+                    y_pred_combined = np.concatenate([y_pred_a, all_preds[bonafide_mask_att]])
                 else:
                     y_true_combined = y_true_a
                     y_pred_combined = y_pred_a
@@ -247,6 +337,7 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=Path, help="Output JSON report path")
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument("--split", type=str, default="test", help="Split to evaluate (default: 'test')")
     parser.add_argument(
         "--allow-synthetic",
         action="store_true",

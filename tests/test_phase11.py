@@ -41,11 +41,14 @@ from training.train import set_seed
 
 # ── Fixtures ────────────────────────────────────────────────────────────────────
 
-def _write_wav(path: Path, *, seconds: float = 1.0, amplitude: int = 5000, sr: int = 16000) -> None:
+def _write_wav(path: Path, *, seconds: float = 1.0, amplitude: int = 5000, sr: int = 16000, seed: int = 42) -> None:
     """Write a minimal valid WAV fixture (not suitable for training, only unit tests)."""
     frames = max(1, int(sr * seconds))
-    t = np.linspace(0, seconds, frames, dtype=np.float32)
-    signal = (np.sin(2 * np.pi * 220 * t) * amplitude).astype(np.int16)
+    t = np.linspace(0, seconds, frames, endpoint=False, dtype=np.float32)
+    rng = np.random.RandomState(seed)
+    sine = np.sin(2 * np.pi * 220 * t)
+    noise = rng.normal(0, 0.05, frames)
+    signal = ((sine + noise) * (amplitude / 1.1)).astype(np.int16)
     with wave.open(str(path), "wb") as out:
         out.setnchannels(1)
         out.setsampwidth(2)
@@ -163,8 +166,17 @@ def test_duplicate_audio_content_flagged():
 
 def test_speaker_disjoint_splits():
     records = [
-        AudioRecord(f"audio-{i}.wav", i % 2, f"speaker-{i}", "corpus", "bona_fide", "none", "en", "mic")
-        for i in range(9)
+        AudioRecord(
+            filepath=f"audio-{i}.wav",
+            label=i % 2,
+            speaker_id=f"speaker-{i}",
+            dataset_source="corpus",
+            attack_type="bona_fide" if i % 2 == 1 else "tts",
+            generator_id="none" if i % 2 == 1 else "sys-a",
+            language="en",
+            channel="mic",
+        )
+        for i in range(12)
     ]
     assigned = make_speaker_disjoint_splits(records, seed=42)
     train_speakers = {r.speaker_id for r in assigned if r.split == "train"}
@@ -179,8 +191,30 @@ def test_speaker_disjoint_splits():
 
 def test_augmentation_leakage_detected():
     leaked = [
-        AudioRecord("a.wav", 1, "spk-a", "corpus", "bona_fide", "none", "en", "mic", "train", augmentation_of="orig-1"),
-        AudioRecord("b.wav", 0, "spk-b", "corpus", "tts", "sys-a", "en", "mic", "test", augmentation_of="orig-1"),
+        AudioRecord(
+            filepath="a.wav",
+            label=1,
+            speaker_id="spk-a",
+            dataset_source="corpus",
+            attack_type="bona_fide",
+            generator_id="none",
+            language="en",
+            channel="mic",
+            split="train",
+            augmentation_of="orig-1",
+        ),
+        AudioRecord(
+            filepath="b.wav",
+            label=0,
+            speaker_id="spk-b",
+            dataset_source="corpus",
+            attack_type="tts",
+            generator_id="sys-a",
+            language="en",
+            channel="mic",
+            split="test",
+            augmentation_of="orig-1",
+        ),
     ]
     issues = split_integrity_issues(leaked)
     assert any("source/augmentation overlap" in issue for issue in issues)

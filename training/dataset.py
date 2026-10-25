@@ -65,6 +65,7 @@ class ValidationReport:
     records: list[AudioRecord] = field(default_factory=list)
     issues: list[ValidationIssue] = field(default_factory=list)
     file_hashes: dict[str, str] = field(default_factory=dict)
+    content_hashes: dict[str, str] = field(default_factory=dict)
 
     @property
     def errors(self) -> list[ValidationIssue]:
@@ -135,6 +136,28 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def hash_decoded_audio(path: str | Path) -> str:
+    """Compute sha256 hash of decoded audio samples (independent of container/headers)."""
+    digest = hashlib.sha256()
+    with sf.SoundFile(str(path)) as audio:
+        for block in audio.blocks(blocksize=65_536, dtype="float32", always_2d=False):
+            digest.update(block.tobytes())
+    return digest.hexdigest()
+
+
+def compute_content_hashes(records: Iterable[AudioRecord], dataset_root: str | Path) -> dict[str, str]:
+    """Compute content hashes of decoded audio for all records."""
+    hashes = {}
+    for record in records:
+        path = resolve_audio_path(record, dataset_root)
+        if path.is_file():
+            try:
+                hashes[record.filepath] = hash_decoded_audio(path)
+            except Exception:
+                pass
+    return hashes
+
+
 def _audio_is_silent(path: Path, threshold: float) -> bool:
     max_amplitude = 0.0
     with sf.SoundFile(path) as audio:
@@ -195,10 +218,20 @@ def validate_dataset(
 
         digest = _sha256(path)
         report.file_hashes[record.filepath] = digest
+        try:
+            content_digest = hash_decoded_audio(path)
+            report.content_hashes[record.filepath] = content_digest
+        except Exception:
+            content_digest = digest
+            report.content_hashes[record.filepath] = content_digest
+
         if digest in hashes:
             report.issues.append(ValidationIssue("error", "duplicate_audio", record.filepath, f"same audio content as {hashes[digest]}"))
+        elif content_digest in hashes:
+            report.issues.append(ValidationIssue("error", "duplicate_audio", record.filepath, f"same audio content as {hashes[content_digest]}"))
         else:
             hashes[digest] = record.filepath
+            hashes[content_digest] = record.filepath
 
     return report
 
@@ -243,7 +276,11 @@ class AntiSpoofDataset(Dataset):
             raise RuntimeError(f"Failed to load dataset manifest: {e}")
 
         if split:
-            self.records = [r for r in all_records if r.split.lower() == split.lower()]
+            if isinstance(split, str):
+                allowed_splits = {s.strip().lower() for s in split.split(",") if s.strip()}
+            else:
+                allowed_splits = {s.strip().lower() for s in split if s.strip()}
+            self.records = [r for r in all_records if r.split.lower() in allowed_splits]
         else:
             self.records = all_records
 
@@ -302,6 +339,8 @@ class AntiSpoofDataset(Dataset):
         metadata = {
             "speaker_id": record.speaker_id,
             "attack_type": record.attack_type,
+            "generator_id": record.generator_id,
+            "split": record.split,
             "filepath": str(filepath)
         }
         return crops, label, metadata

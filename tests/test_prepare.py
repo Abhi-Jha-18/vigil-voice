@@ -34,15 +34,13 @@ def test_prepare_script_success():
     """Test that the prepare script runs successfully with valid data."""
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
-        _write_wav(root / "1.wav", freq=220.0)
-        _write_wav(root / "2.wav", freq=440.0)
-        _write_wav(root / "3.wav", freq=880.0)
+        for i in range(12):
+            _write_wav(root / f"{i}.wav", freq=220.0 + i * 20)
         
         fields = ["filepath", "label", "speaker_id", "dataset_source", "attack_type", "generator_id", "language", "channel", "split"]
         rows = [
-            _metadata_row("1.wav", "speaker-a", 1),
-            _metadata_row("2.wav", "speaker-b", 0),
-            _metadata_row("3.wav", "speaker-c", 1),
+            _metadata_row(f"{i}.wav", f"speaker-{i}", i % 2)
+            for i in range(12)
         ]
         
         metadata = root / "metadata.csv"
