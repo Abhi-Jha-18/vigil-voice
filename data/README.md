@@ -52,7 +52,7 @@ Optional `source_id` and `augmentation_of` fields identify common originals. The
    python -c "from training.dataset import validate_dataset; r = validate_dataset('data/metadata.csv', '.'); print(r.to_dict()); raise SystemExit(not r.valid)"
    ```
 
-4. Create speaker-disjoint train/validation/test assignments using `training.splits.make_speaker_disjoint_splits`, then validate with `split_integrity_issues` before model work.
+4. Keep existing `train`/`validation`/`test` assignments in the metadata; `data/prepare.py` preserves them. If every `split` value is blank, it creates speaker-disjoint assignments. In either case it validates the result with `split_integrity_issues` before writing the manifest.
 5. Report evaluation by `attack_type` and `generator_id` whenever those fields are available.
 
 ## Bundled audio warning

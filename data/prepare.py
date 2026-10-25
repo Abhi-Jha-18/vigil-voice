@@ -38,16 +38,23 @@ def main():
         for warning in report.issues:
             print(f"  [{warning.code}] {warning.filepath}: {warning.message}")
             
-    # Proceed to split
-    print(f"\nGenerating speaker-disjoint splits...")
-    try:
-        assigned_records = make_speaker_disjoint_splits(report.records, seed=args.seed)
-    except ValueError as exc:
-        print(f"Failed to generate splits: {exc}", file=sys.stderr)
-        sys.exit(1)
+    # Preserve supplied split assignments; generate splits only for an entirely
+    # unassigned manifest. Partially assigned manifests fail integrity checks.
+    if all(not record.split for record in report.records):
+        print("\nGenerating speaker-disjoint splits...")
+        try:
+            assigned_records = make_speaker_disjoint_splits(report.records, seed=args.seed)
+        except ValueError as exc:
+            print(f"Failed to generate splits: {exc}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        print("\nUsing pre-assigned splits...")
+        assigned_records = report.records
         
     print("Validating split integrity...")
-    integrity_issues = split_integrity_issues(assigned_records, report.file_hashes)
+    integrity_issues = split_integrity_issues(
+        assigned_records, report.file_hashes, report.content_hashes
+    )
     if integrity_issues:
         print("Split integrity validation failed (leakage detected):", file=sys.stderr)
         for issue in integrity_issues:

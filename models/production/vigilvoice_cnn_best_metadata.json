@@ -1,8 +1,8 @@
 {
-  "timestamp": "20261026_025207",
+  "timestamp": "20261026_030039",
   "seed": 42,
-  "epochs": 3,
-  "batch_size": 16,
+  "epochs": 25,
+  "batch_size": 32,
   "learning_rate": 0.001,
   "manifest_path": "data\\splits\\manifest.csv",
   "preprocessing_config": {
@@ -33,30 +33,30 @@
   ],
   "is_synthetic": false,
   "model_status": "REAL_MODEL",
-  "best_epoch": 3,
+  "best_epoch": 24,
   "best_metrics": {
-    "accuracy": 0.7261146496815286,
-    "precision": 0.7666666666666667,
-    "recall": 0.7159533073929961,
-    "f1": 0.7404426559356138,
-    "far": 0.2616822429906542,
-    "frr": 0.2840466926070039,
-    "roc_auc": 0.7879559256700244,
-    "eer": 0.28221026219135237,
-    "eer_threshold": -0.014644749462604523
+    "accuracy": 0.81475,
+    "precision": 0.7358561258898464,
+    "recall": 0.982,
+    "f1": 0.8412936388948383,
+    "far": 0.3525,
+    "frr": 0.018,
+    "roc_auc": 0.9409088750000001,
+    "eer": 0.134,
+    "eer_threshold": 0.7692544460296631
   },
-  "temperature": 0.5939,
-  "threshold_real": 0.785,
-  "threshold_fake": 0.251,
+  "temperature": 0.8623,
+  "threshold_real": 0.8148,
+  "threshold_fake": 0.5,
   "calibration": {
-    "temperature": 0.5939,
+    "temperature": 0.8623,
     "target_far": 0.05,
-    "threshold_real": 0.785,
-    "threshold_fake": 0.251
+    "threshold_real": 0.8148,
+    "threshold_fake": 0.5
   },
   "label_mapping": {
     "bonafide": 1,
     "spoof": 0
   },
-  "model_sha256": "b3cb156925bd1afd02358a7f120e4ed56d53a3615d810970ec5f08d78ed75cc3"
+  "model_sha256": "76639e553e6e8916b94aa6ecdade71d53f4ca15555d3caf37cdc6d55ddca4d35"
 }
