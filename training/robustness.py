@@ -313,6 +313,7 @@ def run_robustness_evaluation(args):
 
     results_by_condition = {}
     predictions_store = {}
+    clean_scores_by_path = {}
     failure_cases = []
 
     print("\nBeginning Transformation Suite Evaluation...")
@@ -363,10 +364,12 @@ def run_robustness_evaluation(args):
 
             all_scores.append(out_prob)
             all_labels.append(record.label)
+            if cond == "clean":
+                clean_scores_by_path[record.filepath] = out_prob
 
             # Failure Analysis Tracking (Clean vs Transformed)
-            if cond != "clean" and "clean" in predictions_store:
-                clean_prob = predictions_store["clean"]["scores"][idx]
+            if cond != "clean" and record.filepath in clean_scores_by_path:
+                clean_prob = clean_scores_by_path[record.filepath]
                 clean_pred = 1 if clean_prob >= 0.5 else 0
                 trans_pred = 1 if out_prob >= 0.5 else 0
                 true_label = record.label

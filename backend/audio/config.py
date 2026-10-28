@@ -21,7 +21,7 @@ class PreprocessingConfig:
     feature_version: str = "mfcc_v1"
 
     def to_dict(self) -> dict:
-        feature_version = os.getenv("FEATURE_VERSION", self.feature_version).strip()
+        feature_version = (self.feature_version or "").strip()
         if feature_version not in {"mfcc_v1", "logmel_delta_v1"}:
             raise ValueError(f"Unsupported FEATURE_VERSION: {feature_version}")
         return {

@@ -189,29 +189,34 @@ def render_gradcam_b64(
         return ""
     buf = io.BytesIO()
     with _PLOT_LOCK:
-        if audio is None or len(audio) == 0:
+        if audio is None or len(audio) < N_FFT:
             plt.imsave(buf, activation_map, format="png", cmap="magma", origin="lower")
         else:
-            mel = librosa.feature.melspectrogram(
-                y=audio.astype(np.float32, copy=False),
-                sr=sr,
-                n_fft=N_FFT,
-                hop_length=HOP_LENGTH // 2,
-                n_mels=64,
-                fmax=min(8000, sr // 2),
-            )
-            log_mel = librosa.power_to_db(mel, ref=np.max)
-            frames = np.linspace(0, activation_map.shape[1] - 1, log_mel.shape[1])
-            time_map = np.stack([
-                np.interp(frames, np.arange(activation_map.shape[1]), row)
-                for row in activation_map
-            ])
-            figure, axis = plt.subplots(figsize=(5, 2.5), dpi=100)
-            axis.imshow(log_mel, origin="lower", aspect="auto", cmap="gray")
-            axis.imshow(time_map, origin="lower", aspect="auto", cmap="magma", alpha=0.55, vmin=0, vmax=1)
-            axis.axis("off")
-            figure.savefig(buf, format="png", bbox_inches="tight", pad_inches=0)
-            plt.close(figure)
+            try:
+                mel = librosa.feature.melspectrogram(
+                    y=audio.astype(np.float32, copy=False),
+                    sr=sr,
+                    n_fft=N_FFT,
+                    hop_length=HOP_LENGTH // 2,
+                    n_mels=64,
+                    fmax=min(8000, sr // 2),
+                )
+                log_mel = librosa.power_to_db(mel, ref=np.max)
+                frames = np.linspace(0, activation_map.shape[1] - 1, log_mel.shape[1])
+                time_map = np.stack([
+                    np.interp(frames, np.arange(activation_map.shape[1]), row)
+                    for row in activation_map
+                ])
+                figure, axis = plt.subplots(figsize=(5, 2.5), dpi=100)
+                axis.imshow(log_mel, origin="lower", aspect="auto", cmap="gray")
+                axis.imshow(time_map, origin="lower", aspect="auto", cmap="magma", alpha=0.55, vmin=0, vmax=1)
+                axis.axis("off")
+                figure.savefig(buf, format="png", bbox_inches="tight", pad_inches=0)
+                plt.close(figure)
+            except Exception:
+                buf.seek(0)
+                buf.truncate(0)
+                plt.imsave(buf, activation_map, format="png", cmap="magma", origin="lower")
     buf.seek(0)
     return base64.b64encode(buf.read()).decode("utf-8")
 

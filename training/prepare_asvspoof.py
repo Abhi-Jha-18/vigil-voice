@@ -23,18 +23,20 @@ def parse_asvspoof_protocol(protocol_file: Path, audio_dir: Path, split: str) ->
             # ASVspoof 2019 uses FLAC
             audio_path = audio_dir / f"{audio_file}.flac"
             
-            label = 1 if key == 'bonafide' else 0
-            attack_type = key if key == 'bonafide' else f"asvspoof_{system_id}"
+            is_real = (key == 'bonafide')
+            label = 1 if is_real else 0
+            attack_type = "bona_fide" if is_real else system_id
+            generator_id = "none" if is_real else system_id
             
             records.append({
                 "filepath": str(audio_path.as_posix()),
                 "label": label,
                 "speaker_id": speaker_id,
-                "dataset_source": "ASVspoof_2019_LA",
+                "dataset_source": "ASVspoof2019_LA",
                 "attack_type": attack_type,
-                "generator_id": system_id if system_id != '-' else 'none',
+                "generator_id": generator_id,
                 "language": "en",
-                "channel": "unknown",
+                "channel": "microphone",
                 "split": split,
             })
             
@@ -76,7 +78,7 @@ def main():
     
     fieldnames = [
         "filepath", "label", "speaker_id", "dataset_source", "attack_type", 
-        "generator_id", "language", "channel", "split", "source_id", "augmentation_of"
+        "generator_id", "language", "channel", "split",
     ]
     
     with open(args.output, 'w', newline='', encoding='utf-8') as f:

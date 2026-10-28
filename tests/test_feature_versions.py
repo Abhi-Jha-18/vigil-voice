@@ -6,10 +6,12 @@ import numpy as np
 import pytest
 import torch
 
+from backend.audio.config import PreprocessingConfig
 from backend.audio.features import (
     LOGMEL_DELTA_FEATURE_VERSION,
     extract_model_features,
     feature_crops,
+    render_gradcam_b64,
 )
 from backend.audio.pipeline import AudioSegment
 from backend.detection.detector import (
@@ -76,3 +78,19 @@ def test_segment_inference_returns_gradcam_spectrogram():
     assert len(predictions) == 1
     assert predictions[0].gradcam
     assert predictions[0].to_dict()["gradcam"] == predictions[0].gradcam
+
+
+def test_preprocessing_config_to_dict_preserves_instance_feature_version(monkeypatch):
+    monkeypatch.setenv("FEATURE_VERSION", "mfcc_v1")
+    config = PreprocessingConfig(feature_version="logmel_delta_v1")
+    serialized = config.to_dict()
+    assert serialized["feature_version"] == "logmel_delta_v1"
+
+
+def test_render_gradcam_b64_handles_short_audio_gracefully():
+    activation_map = np.ones((64, 64), dtype=np.float32)
+    short_audio = np.zeros(100, dtype=np.float32)
+    result = render_gradcam_b64(activation_map, audio=short_audio)
+    assert isinstance(result, str)
+    assert len(result) > 0
+
